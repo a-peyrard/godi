@@ -18,18 +18,17 @@ type (
 		provides     reflect.Type
 		fn           reflect.Value
 		dependencies []reflect.Type
+		instance     *reflect.Value
 	}
 
 	Resolver struct {
 		providers map[reflect.Type]*providerDef
-		instances map[reflect.Type]reflect.Value
 	}
 )
 
 func New() *Resolver {
 	return &Resolver{
 		providers: make(map[reflect.Type]*providerDef),
-		instances: make(map[reflect.Type]reflect.Value),
 	}
 }
 
@@ -85,17 +84,23 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 }
 
 func (r *Resolver) resolve(lookFor reflect.Type) (reflect.Value, error) {
-	provider, exists := r.instances[lookFor]
+	provider, exists := r.providers[lookFor]
 	if !exists {
+		return reflect.Value{}, fmt.Errorf("provider for type %s not registered", lookFor.String())
+	}
+	var instance reflect.Value
+	if provider.instance == nil {
 		var err error
-		provider, err = r.generateInstance(lookFor)
+		instance, err = r.generateInstance(lookFor)
 		if err != nil {
 			return reflect.Value{}, fmt.Errorf("failed to generate instance for type %s: %w", lookFor.String(), err)
 		}
-		r.instances[lookFor] = provider
+		provider.instance = &instance
+	} else {
+		instance = *provider.instance
 	}
 
-	return provider, nil
+	return instance, nil
 }
 
 func (r *Resolver) generateInstance(lookFor reflect.Type) (reflect.Value, error) {
