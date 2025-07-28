@@ -19,7 +19,7 @@ configure-dev:
 
 # run unit tests
 test *ARGS:
-  @gotestsum -- -v -race "$@" .
+  @gotestsum -- -v -race "$@" ./...
 
 # generate documentation
 doc:

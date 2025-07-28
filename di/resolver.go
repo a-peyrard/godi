@@ -3,32 +3,62 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/a-peyrard/godi/slices"
 	"github.com/rs/zerolog"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"time"
 )
 
 type (
+	Query interface {
+		Want(name string, providedType reflect.Type) bool
+
+		fmt.Stringer
+	}
+
 	Provider any
 
 	providerDef struct {
-		provides     reflect.Type
-		fn           reflect.Value
+		name     string
+		provides reflect.Type
+
+		factory      reflect.Value
 		dependencies []reflect.Type
-		instance     *reflect.Value
+
+		instance *reflect.Value
 	}
 
 	Resolver struct {
-		providers map[reflect.Type]*providerDef
+		providers []*providerDef
+	}
+
+	queryForType struct {
+		typ reflect.Type
 	}
 )
 
+func NewQueryForType(typ reflect.Type) Query {
+	return &queryForType{
+		typ: typ,
+	}
+}
+
+func (q *queryForType) Want(_ string, providedType reflect.Type) bool {
+	return q.typ == providedType
+}
+
+func (q *queryForType) String() string {
+	return fmt.Sprintf("type = %s", q.typ.String())
+}
+
 func New() *Resolver {
 	return &Resolver{
-		providers: make(map[reflect.Type]*providerDef),
+		providers: make([]*providerDef, 0),
 	}
 }
 
@@ -44,22 +74,25 @@ func (r *Resolver) Register(provider Provider) error {
 	if t.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
 		return errors.New("provider must return an error as the second value")
 	}
-	provides := t.Out(0)
-	if _, exists := r.providers[provides]; exists {
-		return fmt.Errorf("provider already registered for type: %s", provides.String())
-	}
 
+	provides := t.Out(0)
 	paramTypes := make([]reflect.Type, t.NumIn())
 	for i := 0; i < t.NumIn(); i++ {
 		paramType := t.In(i)
 		paramTypes[i] = paramType
 	}
+	funcName := runtime.FuncForPC(reflect.ValueOf(provider).Pointer()).Name()
 
-	r.providers[provides] = &providerDef{
-		provides:     provides,
-		fn:           reflect.ValueOf(provider),
-		dependencies: paramTypes,
-	}
+	r.providers = append(
+		r.providers,
+		&providerDef{
+			name:     filepath.Base(funcName),
+			provides: provides,
+
+			factory:      reflect.ValueOf(provider),
+			dependencies: paramTypes,
+		},
+	)
 
 	return nil
 }
@@ -71,7 +104,7 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 		return zero, fmt.Errorf("type %T is not a valid type", zero)
 	}
 
-	provider, err := resolver.resolve(lookFor)
+	provider, err := resolver.resolve(NewQueryForType(lookFor))
 	if err != nil {
 		return zero, fmt.Errorf("failed to resolve type %s: %w", lookFor.String(), err)
 	}
@@ -83,17 +116,23 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 	return typedProvider, nil
 }
 
-func (r *Resolver) resolve(lookFor reflect.Type) (reflect.Value, error) {
-	provider, exists := r.providers[lookFor]
-	if !exists {
-		return reflect.Value{}, fmt.Errorf("provider for type %s not registered", lookFor.String())
+func (r *Resolver) resolve(query Query) (reflect.Value, error) {
+	basket := slices.Filter(r.providers, func(p *providerDef) bool {
+		return query.Want(p.name, p.provides)
+	})
+	if len(basket) == 0 {
+		return reflect.Value{}, fmt.Errorf("no provider found for query: %v", query)
 	}
+	if len(basket) > 1 {
+		return reflect.Value{}, fmt.Errorf("multiple providers found for query: %v, found: %d, use a more precise query", query, len(basket))
+	}
+	provider := basket[0]
 	var instance reflect.Value
 	if provider.instance == nil {
 		var err error
-		instance, err = r.generateInstance(lookFor)
+		instance, err = r.generateInstance(provider)
 		if err != nil {
-			return reflect.Value{}, fmt.Errorf("failed to generate instance for type %s: %w", lookFor.String(), err)
+			return reflect.Value{}, fmt.Errorf("failed to generate instance for type %s: %w", provider.provides.String(), err)
 		}
 		provider.instance = &instance
 	} else {
@@ -103,16 +142,11 @@ func (r *Resolver) resolve(lookFor reflect.Type) (reflect.Value, error) {
 	return instance, nil
 }
 
-func (r *Resolver) generateInstance(lookFor reflect.Type) (reflect.Value, error) {
-	def, exists := r.providers[lookFor]
-	if !exists {
-		return reflect.Value{}, fmt.Errorf("no provider registered for type %s", lookFor.String())
-	}
-
-	fmt.Printf("Resolving %s, need dependencies: %v\n", lookFor.String(), def.dependencies)
+func (r *Resolver) generateInstance(def *providerDef) (reflect.Value, error) {
+	fmt.Printf("Resolving (%s, %s), need dependencies: %v\n", def.name, def.provides.String(), def.dependencies)
 	dependencies := make([]reflect.Value, len(def.dependencies))
 	for i, depType := range def.dependencies {
-		dep, err := r.resolve(depType)
+		dep, err := r.resolve(NewQueryForType(depType))
 		if err != nil {
 			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %s for provider %s: %w", depType.String(), def.provides.String(), err)
 		}
@@ -129,10 +163,10 @@ func (r *Resolver) generateInstance(lookFor reflect.Type) (reflect.Value, error)
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				callErr = fmt.Errorf("panic calling provider for %s: %v", lookFor.String(), r)
+				callErr = fmt.Errorf("panic calling provider for (%s, %s): %v", def.name, def.provides.String(), r)
 			}
 		}()
-		results = def.fn.Call(dependencies)
+		results = def.factory.Call(dependencies)
 	}()
 
 	if callErr != nil {
