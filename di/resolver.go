@@ -7,6 +7,8 @@ import (
 	"github.com/a-peyrard/godi/option"
 	"github.com/a-peyrard/godi/runner"
 	"github.com/a-peyrard/godi/slices"
+	"github.com/a-peyrard/godi/heap"
+	"github.com/a-peyrard/godi/fn"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -38,7 +40,7 @@ type (
 	}
 
 	Resolver struct {
-		providers map[Name][]*providerDef
+		providers map[Name]*heap.PriorityQueue[*providerDef]
 	}
 
 	queryByType struct {
@@ -55,13 +57,20 @@ type (
 	}
 
 	RegisterOptions struct {
-		named string
+		named    string
+		priority int
 	}
 )
 
 func Named(name string) option.Option[RegisterOptions] {
 	return func(opts *RegisterOptions) {
 		opts.named = name
+	}
+}
+
+func Priority(priority int) option.Option[RegisterOptions] {
+	return func(opts *RegisterOptions) {
+		opts.priority = priority
 	}
 }
 
@@ -107,7 +116,7 @@ func matchType(queryType, providedType reflect.Type) bool {
 
 func New() *Resolver {
 	return &Resolver{
-		providers: make(map[Name][]*providerDef),
+		providers: make(map[Name]*heap.PriorityQueue[*providerDef]),
 	}
 }
 
@@ -134,7 +143,8 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 
 	options := option.Build(
 		&RegisterOptions{
-			named: filepath.Base(funcName),
+			named:    filepath.Base(funcName),
+			priority: 0,
 		},
 		opts...,
 	)
@@ -144,11 +154,20 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		providedType: provides,
 	}
 
-	r.providers[name] = append(r.providers[name], &providerDef{
+	providers, exists := r.providers[name]
+	if !exists {
+		// create a max heap (hence reversing the comparator) on priority
+		providers = heap.New[*providerDef](fn.ReverseComparator(compareByPriority))
+		r.providers[name] = providers
+	}
+
+	r.providers[name].Push(&providerDef{
 		name: name,
 
 		factory:      reflect.ValueOf(provider),
 		dependencies: paramTypes,
+
+		priority: options.priority,
 	})
 
 	return nil
@@ -178,15 +197,17 @@ func (r *Resolver) Close() error {
 	closeableType := reflect.TypeOf((*Closeable)(nil)).Elem()
 	closeErrors := make([]error, 0)
 	for _, providers := range r.providers {
-		for _, provider := range providers {
-			if provider.instance != nil && provider.instance.IsValid() && provider.name.providedType.Implements(closeableType) {
-				out := provider.instance.MethodByName("Close").Call(nil)
-				if len(out) != 1 || !out[0].IsNil() {
-					closeErrors = append(
-						closeErrors,
-						fmt.Errorf("failed to close provider %s: %v", provider.name, out[0].Interface()),
-					)
-				}
+		if providers.IsEmpty() {
+			continue
+		}
+		provider := providers.Peek()
+		if provider.instance != nil && provider.instance.IsValid() && provider.name.providedType.Implements(closeableType) {
+			out := provider.instance.MethodByName("Close").Call(nil)
+			if len(out) != 1 || !out[0].IsNil() {
+				closeErrors = append(
+					closeErrors,
+					fmt.Errorf("failed to close provider %s: %v", provider.name, out[0].Interface()),
+				)
 			}
 		}
 	}
@@ -304,8 +325,8 @@ func (r *Resolver) resolveAll(query Query) ([]reflect.Value, error) {
 func (r *Resolver) get(query Query) ([]*providerDef, error) {
 	var basket []*providerDef
 	for name, providers := range r.providers {
-		if query.Want(name) {
-			basket = append(basket, providers...)
+		if query.Want(name) && providers.IsNotEmpty() {
+			basket = append(basket, providers.Peek())
 		}
 	}
 	return basket, nil
@@ -394,4 +415,14 @@ func (r *Resolver) makeInstance(def *providerDef) (reflect.Value, error) {
 	}
 
 	return results[0], nil
+}
+
+func compareByPriority(p1, p2 *providerDef) fn.ComparisonResult {
+	if p1.priority < p2.priority {
+		return fn.Less
+	}
+	if p1.priority > p2.priority {
+		return fn.Greater
+	}
+	return fn.Equal
 }

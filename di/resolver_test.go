@@ -561,7 +561,7 @@ func (n *NameSupplier) Name() string {
 	return n.name
 }
 
-func TestResolver_Named(t *testing.T) {
+func TestResolver_Register(t *testing.T) {
 	t.Run("it should allows to register with custom name", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
@@ -595,5 +595,110 @@ func TestResolver_Named(t *testing.T) {
 
 		assert.Equal(t, "Augustin", firstName.Name())
 		assert.Equal(t, "Peyrard", lastName.Name())
+	})
+
+	t.Run("it should allows to register with custom priority and take precedence when resolving", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Peyrard"}, nil
+			},
+			Named("lastName"),
+		)
+		require.NoError(t, err)
+		err = resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Arshinov"}, nil
+			},
+			Named("lastName"),
+			Priority(100),
+		)
+		err = resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Waldo"}, nil
+			},
+			Named("lastName"),
+			Priority(10),
+		)
+		require.NoError(t, err)
+
+		// WHEN
+		name, err := Resolve[*NameSupplier](resolver)
+
+		// THEN
+		require.NoError(t, err)
+
+		assert.Equal(t, "Arshinov", name.Name())
+	})
+
+	t.Run("it should allows to register with custom priority and take precedence when using named resolution", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Peyrard"}, nil
+			},
+			Named("lastName"),
+		)
+		require.NoError(t, err)
+		err = resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Arshinov"}, nil
+			},
+			Named("lastName"),
+			Priority(100),
+		)
+		err = resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Waldo"}, nil
+			},
+			Named("lastName"),
+			Priority(10),
+		)
+		require.NoError(t, err)
+
+		// WHEN
+		name, err := ResolveNamed[*NameSupplier](resolver, "lastName")
+
+		// THEN
+		require.NoError(t, err)
+
+		assert.Equal(t, "Arshinov", name.Name())
+	})
+
+	t.Run("it should resolve only the highest priority when resolving all", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Peyrard"}, nil
+			},
+			Named("lastName"),
+		)
+		require.NoError(t, err)
+		err = resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Arshinov"}, nil
+			},
+			Named("lastName"),
+			Priority(100),
+		)
+		err = resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Waldo"}, nil
+			},
+			Named("lastName"),
+			Priority(10),
+		)
+		require.NoError(t, err)
+
+		// WHEN
+		names, err := ResolveAll[*NameSupplier](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.Len(t, names, 1)
+		assert.Equal(t, "Arshinov", names[0].Name())
 	})
 }
