@@ -3,14 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/rs/zerolog"
-	"io"
-	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"strings"
-	"time"
 )
 
 type (
@@ -127,23 +122,44 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 }
 
 func (r *Resolver) resolve(query Query) (reflect.Value, error) {
+	provider, err := r.findOne(query)
+	if err != nil {
+		return reflect.Value{}, fmt.Errorf("failed to find provider for query %v: %w", query, err)
+	}
+	return r.instantiate(provider)
+}
+
+func (r *Resolver) find(query Query) ([]*providerDef, error) {
 	var basket []*providerDef
 	for name, providers := range r.providers {
 		if query.Want(name) {
 			basket = append(basket, providers...)
 		}
 	}
+	return basket, nil
+}
+
+func (r *Resolver) findOne(query Query) (*providerDef, error) {
+	basket, err := r.find(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find providers for query %v: %w", query, err)
+	}
+
 	if len(basket) == 0 {
-		return reflect.Value{}, fmt.Errorf("no provider found for query: %v", query)
+		return nil, fmt.Errorf("no provider found for query: %v", query)
 	}
 	if len(basket) > 1 {
-		return reflect.Value{}, fmt.Errorf("multiple providers found for query: %v, found: %d, use a more precise query", query, len(basket))
+		return nil, fmt.Errorf("multiple providers found for query: %v, found: %d, use a more precise query", query, len(basket))
 	}
-	provider := basket[0]
+
+	return basket[0], nil
+}
+
+func (r *Resolver) instantiate(provider *providerDef) (reflect.Value, error) {
 	var instance reflect.Value
 	if provider.instance == nil {
 		var err error
-		instance, err = r.generateInstance(provider)
+		instance, err = r.makeInstance(provider)
 		if err != nil {
 			return reflect.Value{}, fmt.Errorf("failed to generate instance for type %s: %w", provider.name, err)
 		}
@@ -155,7 +171,7 @@ func (r *Resolver) resolve(query Query) (reflect.Value, error) {
 	return instance, nil
 }
 
-func (r *Resolver) generateInstance(def *providerDef) (reflect.Value, error) {
+func (r *Resolver) makeInstance(def *providerDef) (reflect.Value, error) {
 	fmt.Printf("Resolving %s, need dependencies: %v\n", def.name, def.dependencies)
 	dependencies := make([]reflect.Value, len(def.dependencies))
 	for i, depType := range def.dependencies {
@@ -191,89 +207,4 @@ func (r *Resolver) generateInstance(def *providerDef) (reflect.Value, error) {
 	}
 
 	return results[0], nil
-}
-
-// -------------------------------------- PLAYGROUND CODE --------------------------------------
-
-func NewGlobalLogLevel() (zerolog.Level, error) {
-	var level zerolog.Level
-	levelFromEnv := os.Getenv("LOG_LEVEL")
-	if levelFromEnv == "" {
-		level = zerolog.InfoLevel
-	} else {
-		var err error
-		level, err = zerolog.ParseLevel(strings.ToLower(levelFromEnv))
-		if err != nil {
-			return zerolog.NoLevel, fmt.Errorf("invalid log level %s: %w", levelFromEnv, err)
-		}
-	}
-	return level, nil
-}
-
-func NewLogger(level zerolog.Level) (*zerolog.Logger, error) {
-	var writer io.Writer = zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
-	mainLogger := zerolog.New(writer).
-		Level(level).
-		With().
-		Timestamp().
-		Caller().
-		Logger()
-
-	return &mainLogger, nil
-}
-
-type Foobar struct {
-	Name string
-}
-
-func NewFoobar() (*Foobar, error) {
-	return &Foobar{Name: "Hello world"}, nil
-}
-
-type App struct {
-	Logger *zerolog.Logger
-	Foobar *Foobar
-}
-
-func NewApp(foobar *Foobar, logger *zerolog.Logger) (*App, error) {
-	return &App{
-		Foobar: foobar,
-		Logger: logger,
-	}, nil
-}
-
-func (a *App) Run() {
-	a.Logger.Info().Msgf("Running app with Foobar: %s", a.Foobar.Name)
-}
-
-func main() {
-	// should be done in modules, each module registers its own providers
-	resolver := New()
-
-	if err := resolver.Register(NewFoobar); err != nil {
-		fmt.Printf("Error registering Foobar provider: %v\n", err)
-		return
-	}
-	if err := resolver.Register(NewGlobalLogLevel); err != nil {
-		fmt.Printf("Error registering Logger provider: %v\n", err)
-		return
-	}
-	if err := resolver.Register(NewLogger); err != nil {
-		fmt.Printf("Error registering App provider: %v\n", err)
-		return
-	}
-	if err := resolver.Register(NewApp); err != nil {
-		fmt.Printf("Error registering App provider: %v\n", err)
-		return
-	}
-
-	// RUN THE APP
-	app, err := Resolve[*App](resolver)
-	if err != nil {
-		fmt.Printf("Error resolving App: %v\n", err)
-		return
-	}
-
-	// Run the app
-	app.Run()
 }
