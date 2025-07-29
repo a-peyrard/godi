@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/a-peyrard/godi/option"
 	"github.com/a-peyrard/godi/runner"
 	"github.com/a-peyrard/godi/slices"
 	"path/filepath"
@@ -44,35 +45,64 @@ type (
 		typ reflect.Type
 	}
 
+	queryByName struct {
+		name Name
+	}
+
 	// Closeable is an interface that can be used to close resources.
 	Closeable interface {
 		Close() error
 	}
+
+	RegisterOptions struct {
+		named string
+	}
 )
+
+func Named(name string) option.Option[RegisterOptions] {
+	return func(opts *RegisterOptions) {
+		opts.named = name
+	}
+}
 
 func (n Name) String() string {
 	return fmt.Sprintf("(%s, %s)", n.name, n.providedType.String())
 }
 
-func NewQueryForType(typ reflect.Type) Query {
+func newQueryByType(typ reflect.Type) Query {
 	return &queryByType{
 		typ: typ,
 	}
 }
 
 func (q *queryByType) Want(n Name) bool {
-	if q.typ == n.providedType {
-		return true
-	}
-	if q.typ.Kind() == reflect.Interface && n.providedType.Implements(q.typ) {
-		return true
-	}
-
-	return false
+	return matchType(q.typ, n.providedType)
 }
 
 func (q *queryByType) String() string {
-	return fmt.Sprintf("type = %s", q.typ.String())
+	return fmt.Sprintf("<type ~= %s>", q.typ.String())
+}
+
+func newQueryByName(name Name) Query {
+	return &queryByName{name}
+}
+
+func (q queryByName) Want(n Name) bool {
+	return n.name == q.name.name && matchType(q.name.providedType, n.providedType)
+}
+
+func (q queryByName) String() string {
+	return fmt.Sprintf("<type ~= %s and name = %s>", q.name.providedType.String(), q.name.name)
+}
+
+func matchType(queryType, providedType reflect.Type) bool {
+	if queryType == providedType {
+		return true
+	}
+	if queryType.Kind() == reflect.Interface && providedType.Implements(queryType) {
+		return true
+	}
+	return false
 }
 
 func New() *Resolver {
@@ -81,7 +111,7 @@ func New() *Resolver {
 	}
 }
 
-func (r *Resolver) Register(provider Provider) error {
+func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOptions]) error {
 	t := reflect.TypeOf(provider)
 	if t.Kind() != reflect.Func {
 		return errors.New("provider must be a function")
@@ -102,8 +132,15 @@ func (r *Resolver) Register(provider Provider) error {
 	}
 	funcName := runtime.FuncForPC(reflect.ValueOf(provider).Pointer()).Name()
 
+	options := option.Build(
+		&RegisterOptions{
+			named: filepath.Base(funcName),
+		},
+		opts...,
+	)
+
 	name := Name{
-		name:         filepath.Base(funcName),
+		name:         options.named,
 		providedType: provides,
 	}
 
@@ -164,13 +201,29 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 		return zero, fmt.Errorf("type %T is not a valid type", zero)
 	}
 
-	resolved, err := resolver.resolve(NewQueryForType(lookFor))
+	return resolveInternal[T](resolver, newQueryByType(lookFor))
+}
+
+// ResolveNamed attempts to resolve a named component of type T from the resolver.
+func ResolveNamed[T any](resolver *Resolver, name string) (T, error) {
+	var zero T
+	lookFor := reflect.TypeOf((*T)(nil)).Elem()
+	if lookFor == nil {
+		return zero, fmt.Errorf("type %T is not a valid type", zero)
+	}
+
+	return resolveInternal[T](resolver, newQueryByName(Name{name: name, providedType: lookFor}))
+}
+
+func resolveInternal[T any](resolver *Resolver, query Query) (T, error) {
+	var zero T
+	resolved, err := resolver.resolve(query)
 	if err != nil {
-		return zero, fmt.Errorf("failed to resolve type %s: %w", lookFor.String(), err)
+		return zero, fmt.Errorf("failed to resolve query %s: %w", query, err)
 	}
 	resolvedTyped, ok := resolved.Interface().(T)
 	if !ok {
-		return zero, fmt.Errorf("resolved provider is not of type %s", lookFor.String())
+		return zero, fmt.Errorf("resolved provider is not of type %T", zero)
 	}
 
 	return resolvedTyped, nil
@@ -179,7 +232,7 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 // ResolveAll attempts to resolve all components of type T from the resolver.
 func ResolveAll[T any](resolver *Resolver) ([]T, error) {
 	lookFor := reflect.TypeOf((*T)(nil)).Elem()
-	resolvedList, err := resolver.resolveAll(NewQueryForType(lookFor))
+	resolvedList, err := resolver.resolveAll(newQueryByType(lookFor))
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve all for type %s: %w", lookFor.String(), err)
 	}
@@ -202,7 +255,7 @@ func TryResolve[T any](resolver *Resolver) (value T, found bool, err error) {
 		return zero, false, fmt.Errorf("type %T is not a valid type", zero)
 	}
 
-	resolved, found, err := resolver.tryResolve(NewQueryForType(lookFor))
+	resolved, found, err := resolver.tryResolve(newQueryByType(lookFor))
 	if err != nil {
 		return zero, false, fmt.Errorf("failed to resolve type %s: %w", lookFor.String(), err)
 	}
@@ -309,7 +362,7 @@ func (r *Resolver) makeInstance(def *providerDef) (reflect.Value, error) {
 	fmt.Printf("Resolving %s, need dependencies: %v\n", def.name, def.dependencies)
 	dependencies := make([]reflect.Value, len(def.dependencies))
 	for i, depType := range def.dependencies {
-		dep, err := r.resolve(NewQueryForType(depType))
+		dep, err := r.resolve(newQueryByType(depType))
 		if err != nil {
 			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %s for provider %s: %w", depType.String(), def.name.String(), err)
 		}

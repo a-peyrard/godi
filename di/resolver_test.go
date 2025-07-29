@@ -312,7 +312,7 @@ func TestResolver(t *testing.T) {
 	})
 }
 
-func TestResolverClose(t *testing.T) {
+func TestResolver_Close(t *testing.T) {
 	t.Run("it should close all instantiated closeable when closing resolver", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
@@ -398,7 +398,7 @@ func (l *ContextRunner) Run(ctx context.Context) error {
 	return nil
 }
 
-func TestResolverRun(t *testing.T) {
+func TestResolver_Run(t *testing.T) {
 	t.Run("it should run all runnables", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
@@ -548,5 +548,52 @@ func TestResolver_TryResolve(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, found)
 		assert.Same(t, service1, service2, "TryResolve should return same singleton instance")
+	})
+}
+
+type (
+	NameSupplier struct {
+		name string
+	}
+)
+
+func (n *NameSupplier) Name() string {
+	return n.name
+}
+
+func TestResolver_Named(t *testing.T) {
+	t.Run("it should allows to register with custom name", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Augustin"}, nil
+			},
+			Named("firstName"),
+		)
+		require.NoError(t, err)
+		err = resolver.Register(
+			func() (*NameSupplier, error) {
+				return &NameSupplier{name: "Peyrard"}, nil
+			},
+			Named("lastName"),
+		)
+		require.NoError(t, err)
+
+		// WHEN
+		names, err := ResolveAll[*NameSupplier](resolver)
+		require.NoError(t, err)
+		firstName, err := ResolveNamed[*NameSupplier](resolver, "firstName")
+		lastName, err := ResolveNamed[*NameSupplier](resolver, "lastName")
+
+		// THEN
+		require.NoError(t, err)
+		assert.Len(t, names, 2)
+		namesFound := []string{names[0].Name(), names[1].Name()}
+		assert.Contains(t, namesFound, "Augustin")
+		assert.Contains(t, namesFound, "Peyrard")
+
+		assert.Equal(t, "Augustin", firstName.Name())
+		assert.Equal(t, "Peyrard", lastName.Name())
 	})
 }
