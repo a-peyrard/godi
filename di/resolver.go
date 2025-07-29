@@ -134,6 +134,7 @@ func (r *Resolver) Close() error {
 	return errors.Join(closeErrors...)
 }
 
+// Resolve attempts to resolve a component of type T from the resolver.
 func Resolve[T any](resolver *Resolver) (T, error) {
 	var zero T
 	lookFor := reflect.TypeOf((*T)(nil)).Elem()
@@ -153,6 +154,7 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 	return resolvedTyped, nil
 }
 
+// ResolveAll attempts to resolve all components of type T from the resolver.
 func ResolveAll[T any](resolver *Resolver) ([]T, error) {
 	lookFor := reflect.TypeOf((*T)(nil)).Elem()
 	resolvedList, err := resolver.resolveAll(NewQueryForType(lookFor))
@@ -168,23 +170,63 @@ func ResolveAll[T any](resolver *Resolver) ([]T, error) {
 	})
 }
 
-func (r *Resolver) resolve(query Query) (reflect.Value, error) {
-	provider, err := r.findOne(query)
+// TryResolve attempts to resolve a component of type T from the resolver.
+//
+// It returns the resolved value, a boolean indicating if it was found, and an error if any occurred during resolution.
+func TryResolve[T any](resolver *Resolver) (value T, found bool, err error) {
+	var zero T
+	lookFor := reflect.TypeOf((*T)(nil)).Elem()
+	if lookFor == nil {
+		return zero, false, fmt.Errorf("type %T is not a valid type", zero)
+	}
+
+	resolved, found, err := resolver.tryResolve(NewQueryForType(lookFor))
 	if err != nil {
-		return reflect.Value{}, fmt.Errorf("failed to find provider for query %v: %w", query, err)
+		return zero, false, fmt.Errorf("failed to resolve type %s: %w", lookFor.String(), err)
+	}
+	if !found {
+		return zero, false, nil
+	}
+	resolvedTyped, ok := resolved.Interface().(T)
+	if !ok {
+		return zero, false, fmt.Errorf("resolved provider is not of type %s", lookFor.String())
+	}
+
+	return resolvedTyped, true, nil
+}
+
+func (r *Resolver) resolve(query Query) (reflect.Value, error) {
+	provider, err := r.getOne(query)
+	if err != nil {
+		return reflect.Value{}, fmt.Errorf("failed to get provider for query %v: %w", query, err)
 	}
 	return r.instantiate(provider)
 }
 
-func (r *Resolver) resolveAll(query Query) ([]reflect.Value, error) {
-	providers, err := r.find(query)
+func (r *Resolver) tryResolve(query Query) (val reflect.Value, found bool, err error) {
+	provider, found, err := r.findOne(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find providers for query %v: %w", query, err)
+		return reflect.Value{}, false, fmt.Errorf("failed to get provider for query %v: %w", query, err)
+	}
+	if !found {
+		return reflect.Value{}, false, nil
+	}
+	val, err = r.instantiate(provider)
+	if err != nil {
+		return reflect.Value{}, false, fmt.Errorf("failed to instantiate provider %s: %w", provider.name, err)
+	}
+	return val, true, nil
+}
+
+func (r *Resolver) resolveAll(query Query) ([]reflect.Value, error) {
+	providers, err := r.get(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get providers for query %v: %w", query, err)
 	}
 	return slices.UnsafeMap(providers, r.instantiate)
 }
 
-func (r *Resolver) find(query Query) ([]*providerDef, error) {
+func (r *Resolver) get(query Query) ([]*providerDef, error) {
 	var basket []*providerDef
 	for name, providers := range r.providers {
 		if query.Want(name) {
@@ -194,10 +236,10 @@ func (r *Resolver) find(query Query) ([]*providerDef, error) {
 	return basket, nil
 }
 
-func (r *Resolver) findOne(query Query) (*providerDef, error) {
-	basket, err := r.find(query)
+func (r *Resolver) getOne(query Query) (*providerDef, error) {
+	basket, err := r.get(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find providers for query %v: %w", query, err)
+		return nil, fmt.Errorf("failed to get providers for query %v: %w", query, err)
 	}
 
 	if len(basket) == 0 {
@@ -208,6 +250,21 @@ func (r *Resolver) findOne(query Query) (*providerDef, error) {
 	}
 
 	return basket[0], nil
+}
+
+func (r *Resolver) findOne(query Query) (provider *providerDef, found bool, err error) {
+	basket, err := r.get(query)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get providers for query %v: %w", query, err)
+	}
+	if len(basket) == 0 {
+		return nil, false, nil
+	}
+	if len(basket) > 1 {
+		return nil, false, fmt.Errorf("multiple providers found for query: %v, found: %d, use a more precise query", query, len(basket))
+	}
+
+	return basket[0], true, nil
 }
 
 func (r *Resolver) instantiate(provider *providerDef) (reflect.Value, error) {

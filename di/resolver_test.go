@@ -359,3 +359,107 @@ func TestResolver(t *testing.T) {
 		// The current implementation might infinite loop or stack overflow
 	})
 }
+
+func TestResolver_TryResolve(t *testing.T) {
+	t.Run("it should return found=true when component exists", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestService)
+		require.NoError(t, err)
+
+		// WHEN
+		service, found, err := TryResolve[*TestService](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.True(t, found)
+		require.NotNil(t, service)
+		assert.Equal(t, "test-service", service.Name)
+	})
+
+	t.Run("it should return found=false when component does not exist", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		// WHEN
+		service, found, err := TryResolve[*TestService](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.False(t, found)
+		assert.Nil(t, service)
+	})
+
+	t.Run("it should return error when provider function fails", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewFailingProvider)
+		require.NoError(t, err)
+
+		// WHEN
+		service, found, err := TryResolve[*TestService](resolver)
+
+		// THEN
+		require.Error(t, err)
+		assert.False(t, found)
+		assert.Nil(t, service)
+		assert.Contains(t, err.Error(), "provider intentionally failed")
+	})
+
+	t.Run("it should return error when dependency cannot be resolved", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestController) // Depends on TestService and TestRepository
+		require.NoError(t, err)
+		// But TestService and TestRepository are not registered
+
+		// WHEN
+		controller, found, err := TryResolve[*TestController](resolver)
+
+		// THEN
+		require.Error(t, err)
+		assert.False(t, found)
+		assert.Nil(t, controller)
+		assert.Contains(t, err.Error(), "failed to resolve dependency")
+	})
+
+	t.Run("it should resolve complex dependencies when all are available", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestService)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestRepository)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestController)
+		require.NoError(t, err)
+
+		// WHEN
+		controller, found, err := TryResolve[*TestController](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.True(t, found)
+		require.NotNil(t, controller)
+		require.NotNil(t, controller.Service)
+		require.NotNil(t, controller.Repo)
+		assert.Equal(t, "test-service", controller.Service.Name)
+		assert.Equal(t, "test-data", controller.Repo.Data)
+	})
+
+	t.Run("it should return same instance as Resolve for existing components", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestService)
+		require.NoError(t, err)
+
+		// WHEN
+		service1, err := Resolve[*TestService](resolver)
+		require.NoError(t, err)
+		service2, found, err := TryResolve[*TestService](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.True(t, found)
+		assert.Same(t, service1, service2, "TryResolve should return same singleton instance")
+	})
+}
