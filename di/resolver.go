@@ -54,7 +54,14 @@ func NewQueryForType(typ reflect.Type) Query {
 }
 
 func (q *queryByType) Want(n Name) bool {
-	return q.typ == n.providedType
+	if q.typ == n.providedType {
+		return true
+	}
+	if q.typ.Kind() == reflect.Interface && n.providedType.Implements(q.typ) {
+		return true
+	}
+
+	return false
 }
 
 func (q *queryByType) String() string {
@@ -105,7 +112,7 @@ func (r *Resolver) Register(provider Provider) error {
 
 func Resolve[T any](resolver *Resolver) (T, error) {
 	var zero T
-	lookFor := reflect.TypeOf(zero)
+	lookFor := reflect.TypeOf((*T)(nil)).Elem()
 	if lookFor == nil {
 		return zero, fmt.Errorf("type %T is not a valid type", zero)
 	}
@@ -123,12 +130,7 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 }
 
 func ResolveAll[T any](resolver *Resolver) ([]T, error) {
-	var zero T
-	lookFor := reflect.TypeOf(zero)
-	if lookFor == nil {
-		return nil, fmt.Errorf("type %T is not a valid type", zero)
-	}
-
+	lookFor := reflect.TypeOf((*T)(nil)).Elem()
 	resolvedList, err := resolver.resolveAll(NewQueryForType(lookFor))
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve all for type %s: %w", lookFor.String(), err)

@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,8 +15,16 @@ type TestService struct {
 	Name string
 }
 
+func (t *TestService) Close() error {
+	return nil
+}
+
 type TestRepository struct {
 	Data string
+}
+
+func (t *TestRepository) Close() error {
+	return nil
 }
 
 type TestController struct {
@@ -87,6 +97,28 @@ func TestResolver(t *testing.T) {
 		assert.NotNil(t, controller)
 		assert.NotNil(t, controller.Service)
 		assert.NotNil(t, controller.Repo)
+		assert.Equal(t, "test-service", controller.Service.Name)
+		assert.Equal(t, "test-data", controller.Repo.Data)
+	})
+
+	t.Run("it should not care about registering order when resolving dependencies", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestController)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestService)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestRepository)
+		require.NoError(t, err)
+
+		// WHEN
+		controller, err := Resolve[*TestController](resolver)
+
+		// THEN
+		require.NoError(t, err)
+
+		require.NoError(t, err)
+		assert.NotNil(t, controller)
 		assert.Equal(t, "test-service", controller.Service.Name)
 		assert.Equal(t, "test-data", controller.Repo.Data)
 	})
@@ -217,6 +249,27 @@ func TestResolver(t *testing.T) {
 		names := []string{resolved[0].Name, resolved[1].Name}
 		assert.Contains(t, names, "test-service-1")
 		assert.Contains(t, names, "test-service-2")
+	})
+
+	t.Run("it should allow to resolve by interface and get implementing types", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestService)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestRepository)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestController)
+		require.NoError(t, err)
+
+		// WHEN
+		resolved, err := ResolveAll[io.Closer](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.Len(t, resolved, 2)
+		types := []string{fmt.Sprintf("%T", resolved[0]), fmt.Sprintf("%T", resolved[1])}
+		assert.Contains(t, types, "*main.TestService")
+		assert.Contains(t, types, "*main.TestRepository")
 	})
 
 	// fixme: handle circular dependencies gracefully
