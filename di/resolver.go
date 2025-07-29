@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"github.com/a-peyrard/godi/runner"
 	"github.com/a-peyrard/godi/slices"
 	"path/filepath"
 	"reflect"
@@ -113,6 +115,26 @@ func (r *Resolver) Register(provider Provider) error {
 	})
 
 	return nil
+}
+
+func (r *Resolver) Run() error {
+	ctx, found, err := TryResolve[context.Context](r)
+	if err != nil {
+		return fmt.Errorf("failed to resolve context: %w", err)
+	}
+	if !found {
+		ctx = context.Background()
+	}
+
+	runnables, err := ResolveAll[runner.Runnable](r)
+	if err != nil {
+		return fmt.Errorf("failed to resolve runnables: %w", err)
+	}
+	if len(runnables) == 0 {
+		return nil // nothing to run
+	}
+
+	return runner.RunAll(ctx, runnables...)
 }
 
 func (r *Resolver) Close() error {

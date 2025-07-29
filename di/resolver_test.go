@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -281,6 +282,37 @@ func TestResolver(t *testing.T) {
 		assert.Contains(t, types, "*main.TestRepository")
 	})
 
+	// fixme: handle circular dependencies gracefully
+	t.Run("it should handle circular dependencies gracefully", func(t *testing.T) {
+		t.Skip() // fixme!
+
+		// GIVEN
+		resolver := New()
+
+		// Create circular dependency providers
+		circularProviderA := func(b *TestRepository) (*TestService, error) {
+			return &TestService{Name: "circular-a"}, nil
+		}
+		circularProviderB := func(a *TestService) (*TestRepository, error) {
+			return &TestRepository{Data: "circular-b"}, nil
+		}
+
+		err1 := resolver.Register(circularProviderA)
+		err2 := resolver.Register(circularProviderB)
+		require.NoError(t, err1)
+		require.NoError(t, err2)
+
+		// WHEN
+		_, err := Resolve[*TestService](resolver)
+
+		// THEN
+		require.Error(t, err, "Expected error for circular dependency")
+		// Note: This test might need adjustment based on how you want to handle circular deps
+		// The current implementation might infinite loop or stack overflow
+	})
+}
+
+func TestResolverClose(t *testing.T) {
 	t.Run("it should close all instantiated closeable when closing resolver", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
@@ -329,34 +361,89 @@ func TestResolver(t *testing.T) {
 		// THEN
 		assert.Equal(t, int32(1), after-before)
 	})
+}
 
-	// fixme: handle circular dependencies gracefully
-	t.Run("it should handle circular dependencies gracefully", func(t *testing.T) {
-		t.Skip() // fixme!
+var runCounter atomic.Int32
 
+type (
+	Coyote struct{}
+
+	LoadRunner struct{}
+
+	ContextRunner struct {
+		Hello string
+	}
+
+	greetKey struct{}
+)
+
+func (c *Coyote) Run(context.Context) error {
+	runCounter.Add(1)
+	return nil
+}
+
+func (l *LoadRunner) Run(context.Context) error {
+	runCounter.Add(1)
+	return nil
+}
+
+func (l *ContextRunner) Run(ctx context.Context) error {
+	val := ctx.Value(greetKey{}).(string)
+	if val == "" {
+		l.Hello = "Waldo"
+	} else {
+		l.Hello = val
+	}
+
+	return nil
+}
+
+func TestResolverRun(t *testing.T) {
+	t.Run("it should run all runnables", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
-
-		// Create circular dependency providers
-		circularProviderA := func(b *TestRepository) (*TestService, error) {
-			return &TestService{Name: "circular-a"}, nil
-		}
-		circularProviderB := func(a *TestService) (*TestRepository, error) {
-			return &TestRepository{Data: "circular-b"}, nil
-		}
-
-		err1 := resolver.Register(circularProviderA)
-		err2 := resolver.Register(circularProviderB)
-		require.NoError(t, err1)
-		require.NoError(t, err2)
+		err := resolver.Register(func() (*Coyote, error) {
+			return &Coyote{}, nil
+		})
+		require.NoError(t, err)
+		err = resolver.Register(func() (*LoadRunner, error) {
+			return &LoadRunner{}, nil
+		})
+		require.NoError(t, err)
+		err = resolver.Register(NewTestController)
 
 		// WHEN
-		_, err := Resolve[*TestService](resolver)
+		startingRunCount := runCounter.Load()
+		err = resolver.Run()
+		require.NoError(t, err)
+		endingRunCount := runCounter.Load()
 
 		// THEN
-		require.Error(t, err, "Expected error for circular dependency")
-		// Note: This test might need adjustment based on how you want to handle circular deps
-		// The current implementation might infinite loop or stack overflow
+		require.NoError(t, err)
+		assert.Equal(t, int32(2), endingRunCount-startingRunCount)
+	})
+
+	t.Run("it should use provided context if one is provided", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(func() (context.Context, error) {
+			ctx := context.WithValue(t.Context(), greetKey{}, "Augustin")
+			return ctx, nil
+		})
+		require.NoError(t, err)
+		err = resolver.Register(func() (*ContextRunner, error) {
+			return &ContextRunner{}, nil
+		})
+		require.NoError(t, err)
+
+		// WHEN
+		err = resolver.Run()
+		require.NoError(t, err)
+
+		// THEN
+		contextRunner, err := Resolve[*ContextRunner](resolver)
+		require.NoError(t, err)
+		assert.Equal(t, "Augustin", contextRunner.Hello)
 	})
 }
 

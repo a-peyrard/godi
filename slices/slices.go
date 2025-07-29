@@ -11,8 +11,8 @@ func Filter[T any](slice []T, predicate func(T) bool) []T {
 	return result
 }
 
-// UnsafeMap maps values of a slice using a specified mapper that can return an error.
-// If the mapper returns an error, this method will return the error and stop processing the slice.
+// UnsafeMap maps values of a slice using a specified transformer that can return an error.
+// If the transformer returns an error, this method will return the error and stop processing the slice.
 func UnsafeMap[F any, T any](original []F, mapper func(F) (T, error)) ([]T, error) {
 	destination := make([]T, len(original))
 	for i := 0; i < len(original); i++ {
