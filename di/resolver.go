@@ -41,6 +41,11 @@ type (
 	queryByType struct {
 		typ reflect.Type
 	}
+
+	// Closeable is an interface that can be used to close resources.
+	Closeable interface {
+		Close() error
+	}
 )
 
 func (n Name) String() string {
@@ -108,6 +113,25 @@ func (r *Resolver) Register(provider Provider) error {
 	})
 
 	return nil
+}
+
+func (r *Resolver) Close() error {
+	closeableType := reflect.TypeOf((*Closeable)(nil)).Elem()
+	closeErrors := make([]error, 0)
+	for _, providers := range r.providers {
+		for _, provider := range providers {
+			if provider.instance != nil && provider.instance.IsValid() && provider.name.providedType.Implements(closeableType) {
+				out := provider.instance.MethodByName("Close").Call(nil)
+				if len(out) != 1 || !out[0].IsNil() {
+					closeErrors = append(
+						closeErrors,
+						fmt.Errorf("failed to close provider %s: %v", provider.name, out[0].Interface()),
+					)
+				}
+			}
+		}
+	}
+	return errors.Join(closeErrors...)
 }
 
 func Resolve[T any](resolver *Resolver) (T, error) {

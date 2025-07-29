@@ -4,26 +4,35 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+var closeCounter atomic.Int32
+
 // Test types for DI testing
 type TestService struct {
-	Name string
+	Name   string
+	closed bool
 }
 
 func (t *TestService) Close() error {
+	t.closed = true
+	closeCounter.Add(1)
 	return nil
 }
 
 type TestRepository struct {
-	Data string
+	Data   string
+	closed bool
 }
 
 func (t *TestRepository) Close() error {
+	t.closed = true
+	closeCounter.Add(1)
 	return nil
 }
 
@@ -270,6 +279,55 @@ func TestResolver(t *testing.T) {
 		types := []string{fmt.Sprintf("%T", resolved[0]), fmt.Sprintf("%T", resolved[1])}
 		assert.Contains(t, types, "*main.TestService")
 		assert.Contains(t, types, "*main.TestRepository")
+	})
+
+	t.Run("it should close all instantiated closeable when closing resolver", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestService)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestRepository)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestController)
+		require.NoError(t, err)
+
+		testService, err := Resolve[*TestService](resolver)
+		require.NoError(t, err)
+		testRepository, err := Resolve[*TestRepository](resolver)
+		require.NoError(t, err)
+
+		// WHEN
+		err = resolver.Close()
+
+		// THEN
+		require.NoError(t, err)
+		assert.True(t, testService.closed)
+		assert.True(t, testRepository.closed)
+	})
+
+	t.Run("it should close only instantiated providers", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestService)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestRepository)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestController)
+		require.NoError(t, err)
+
+		_, err = Resolve[*TestService](resolver)
+		require.NoError(t, err)
+
+		// WHEN
+		// the counter is not ideal, as it would not work if we start running tests in parallel
+		// but as long as we run tests sequentially, it should be fine
+		before := closeCounter.Load()
+		err = resolver.Close()
+		require.NoError(t, err)
+		after := closeCounter.Load()
+
+		// THEN
+		assert.Equal(t, int32(1), after-before)
 	})
 
 	// fixme: handle circular dependencies gracefully
