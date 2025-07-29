@@ -176,6 +176,49 @@ func TestResolver(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to resolve dependency")
 	})
 
+	t.Run("it should fail if multiple providers can resolve the same requirement", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(func() (*TestService, error) {
+			return &TestService{Name: "test-service-1"}, nil
+		})
+		require.NoError(t, err)
+		err = resolver.Register(func() (*TestService, error) {
+			return &TestService{Name: "test-service-2"}, nil
+		})
+		require.NoError(t, err)
+
+		// WHEN
+		_, err = Resolve[*TestService](resolver)
+
+		// THEN
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "multiple providers found for query")
+	})
+
+	t.Run("it should allow to resolve all providers for a given type", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(func() (*TestService, error) {
+			return &TestService{Name: "test-service-1"}, nil
+		})
+		require.NoError(t, err)
+		err = resolver.Register(func() (*TestService, error) {
+			return &TestService{Name: "test-service-2"}, nil
+		})
+		require.NoError(t, err)
+
+		// WHEN
+		resolved, err := ResolveAll[*TestService](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.Len(t, resolved, 2)
+		names := []string{resolved[0].Name, resolved[1].Name}
+		assert.Contains(t, names, "test-service-1")
+		assert.Contains(t, names, "test-service-2")
+	})
+
 	// fixme: handle circular dependencies gracefully
 	t.Run("it should handle circular dependencies gracefully", func(t *testing.T) {
 		t.Skip() // fixme!

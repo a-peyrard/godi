@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/a-peyrard/godi/slices"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -109,16 +110,36 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 		return zero, fmt.Errorf("type %T is not a valid type", zero)
 	}
 
-	provider, err := resolver.resolve(NewQueryForType(lookFor))
+	resolved, err := resolver.resolve(NewQueryForType(lookFor))
 	if err != nil {
 		return zero, fmt.Errorf("failed to resolve type %s: %w", lookFor.String(), err)
 	}
-	typedProvider, ok := provider.Interface().(T)
+	resolvedTyped, ok := resolved.Interface().(T)
 	if !ok {
 		return zero, fmt.Errorf("resolved provider is not of type %s", lookFor.String())
 	}
 
-	return typedProvider, nil
+	return resolvedTyped, nil
+}
+
+func ResolveAll[T any](resolver *Resolver) ([]T, error) {
+	var zero T
+	lookFor := reflect.TypeOf(zero)
+	if lookFor == nil {
+		return nil, fmt.Errorf("type %T is not a valid type", zero)
+	}
+
+	resolvedList, err := resolver.resolveAll(NewQueryForType(lookFor))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve all for type %s: %w", lookFor.String(), err)
+	}
+	return slices.UnsafeMap(resolvedList, func(resolved reflect.Value) (T, error) {
+		resolvedTyped, ok := resolved.Interface().(T)
+		if !ok {
+			return resolvedTyped, fmt.Errorf("resolved provider is not of type %s", lookFor.String())
+		}
+		return resolvedTyped, nil
+	})
 }
 
 func (r *Resolver) resolve(query Query) (reflect.Value, error) {
@@ -127,6 +148,14 @@ func (r *Resolver) resolve(query Query) (reflect.Value, error) {
 		return reflect.Value{}, fmt.Errorf("failed to find provider for query %v: %w", query, err)
 	}
 	return r.instantiate(provider)
+}
+
+func (r *Resolver) resolveAll(query Query) ([]reflect.Value, error) {
+	providers, err := r.find(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find providers for query %v: %w", query, err)
+	}
+	return slices.UnsafeMap(providers, r.instantiate)
 }
 
 func (r *Resolver) find(query Query) ([]*providerDef, error) {

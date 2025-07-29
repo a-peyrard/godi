@@ -1,6 +1,7 @@
 package slices
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -75,5 +76,74 @@ func TestFilter(t *testing.T) {
 
 		// THEN
 		assert.Empty(t, result)
+	})
+}
+
+func TestUnsafeMap(t *testing.T) {
+	t.Run("it should transform strings to their lengths", func(t *testing.T) {
+		// GIVEN
+		input := []string{"foo", "hello", "a"}
+		mapper := func(s string) (int, error) {
+			return len(s), nil
+		}
+
+		// WHEN
+		result, err := UnsafeMap(input, mapper)
+
+		// THEN
+		assert.NoError(t, err)
+		assert.Equal(t, []int{3, 5, 1}, result)
+	})
+
+	t.Run("it should return error when mapper fails", func(t *testing.T) {
+		// GIVEN
+		input := []string{"foo", "bar", "baz"}
+		mapper := func(s string) (int, error) {
+			if s == "bar" {
+				return 0, errors.New("failed to process bar")
+			}
+			return len(s), nil
+		}
+
+		// WHEN
+		result, err := UnsafeMap(input, mapper)
+
+		// THEN
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "failed to process bar")
+	})
+
+	t.Run("it should handle empty slice", func(t *testing.T) {
+		// GIVEN
+		var input []string
+		mapper := func(s string) (int, error) {
+			return len(s), nil
+		}
+
+		// WHEN
+		result, err := UnsafeMap(input, mapper)
+
+		// THEN
+		assert.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("it should transform integers to strings", func(t *testing.T) {
+		// GIVEN
+		input := []int{1, 2, 3}
+		mapper := func(n int) (string, error) {
+			if n < 0 {
+				return "", errors.New("negative numbers not allowed")
+			}
+			return string(rune('0' + n)), nil
+		}
+
+		// WHEN
+		result, err := UnsafeMap(input, mapper)
+
+		// THEN
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"1", "2", "3"}, result)
 	})
 }
