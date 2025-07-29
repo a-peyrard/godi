@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/a-peyrard/godi/di"
 	"github.com/rs/zerolog"
 	"io"
 	"os"
@@ -48,25 +49,43 @@ func NewFoobar() (*Foobar, error) {
 	return &Foobar{Name: "Hello world"}, nil
 }
 
-type App struct {
-	Logger *zerolog.Logger
-	Foobar *Foobar
+type Environment struct {
+	Name string
 }
 
-func NewApp(foobar *Foobar, logger *zerolog.Logger) (*App, error) {
+func NewProdEnvironment() (*Environment, error) {
+	return &Environment{Name: "Prod"}, nil
+}
+
+func NewDevEnvironment() (*Environment, error) {
+	return &Environment{Name: "Dev"}, nil
+}
+
+func NewTestEnvironment() (*Environment, error) {
+	return &Environment{Name: "Test"}, nil
+}
+
+type App struct {
+	logger *zerolog.Logger
+	foobar *Foobar
+	env    *Environment
+}
+
+func NewApp(foobar *Foobar, logger *zerolog.Logger, env *Environment) (*App, error) {
 	return &App{
-		Foobar: foobar,
-		Logger: logger,
+		foobar: foobar,
+		logger: logger,
+		env:    env,
 	}, nil
 }
 
 func (a *App) Run() {
-	a.Logger.Info().Msgf("Running app with Foobar: %s", a.Foobar.Name)
+	a.logger.Info().Msgf("[%s] Running app with Foobar: %s", a.env.Name, a.foobar.Name)
 }
 
 func main() {
 	// should be done in modules, each module registers its own providers
-	resolver := New()
+	resolver := di.New()
 
 	if err := resolver.Register(NewFoobar); err != nil {
 		fmt.Printf("Error registering Foobar provider: %v\n", err)
@@ -84,9 +103,28 @@ func main() {
 		fmt.Printf("Error registering App provider: %v\n", err)
 		return
 	}
+	if err := resolver.Register(NewProdEnvironment, di.Named("NameProvider")); err != nil {
+		fmt.Printf("Error registering prod NameProvider provider: %v\n", err)
+		return
+	}
+
+	appEnv := os.Getenv("APP_ENV")
+	switch appEnv {
+	case "dev":
+		if err := resolver.Register(NewDevEnvironment, di.Named("NameProvider"), di.Priority(100)); err != nil {
+			fmt.Printf("Error registering dev NameProvider provider: %v\n", err)
+			return
+		}
+	case "test":
+		if err := resolver.Register(NewTestEnvironment, di.Named("NameProvider"), di.Priority(100)); err != nil {
+			fmt.Printf("Error registering test NameProvider provider: %v\n", err)
+			return
+		}
+
+	}
 
 	// RUN THE APP
-	app, err := Resolve[*App](resolver)
+	app, err := di.Resolve[*App](resolver)
 	if err != nil {
 		fmt.Printf("Error resolving App: %v\n", err)
 		return

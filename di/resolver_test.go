@@ -1,4 +1,4 @@
-package main
+package di
 
 import (
 	"context"
@@ -278,8 +278,8 @@ func TestResolver(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, resolved, 2)
 		types := []string{fmt.Sprintf("%T", resolved[0]), fmt.Sprintf("%T", resolved[1])}
-		assert.Contains(t, types, "*main.TestService")
-		assert.Contains(t, types, "*main.TestRepository")
+		assert.Contains(t, types, "*di.TestService")
+		assert.Contains(t, types, "*di.TestRepository")
 	})
 
 	// fixme: handle circular dependencies gracefully
