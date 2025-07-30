@@ -63,103 +63,6 @@ func NewFailingProvider() (*TestService, error) {
 }
 
 func TestResolver(t *testing.T) {
-	t.Run("it should register a simple provider successfully", func(t *testing.T) {
-		// GIVEN
-		resolver := New()
-
-		// WHEN
-		err := resolver.Register(NewTestService)
-
-		// THEN
-		require.NoError(t, err)
-
-		service, err := Resolve[*TestService](resolver)
-		require.NoError(t, err)
-		assert.NotNil(t, service)
-		assert.Equal(t, "test-service", service.Name)
-	})
-
-	t.Run("it should register multiple providers with dependencies", func(t *testing.T) {
-		// GIVEN
-		resolver := New()
-
-		// WHEN
-		err := resolver.Register(NewTestService)
-		require.NoError(t, err)
-		err = resolver.Register(NewTestRepository)
-		require.NoError(t, err)
-		err = resolver.Register(NewTestController)
-		require.NoError(t, err)
-
-		// THEN
-		service, err := Resolve[*TestService](resolver)
-		require.NoError(t, err)
-		assert.NotNil(t, service)
-		assert.Equal(t, "test-service", service.Name)
-
-		repo, err := Resolve[*TestRepository](resolver)
-		require.NoError(t, err)
-		assert.NotNil(t, repo)
-		assert.Equal(t, "test-data", repo.Data)
-
-		controller, err := Resolve[*TestController](resolver)
-		require.NoError(t, err)
-		assert.NotNil(t, controller)
-		assert.NotNil(t, controller.Service)
-		assert.NotNil(t, controller.Repo)
-		assert.Equal(t, "test-service", controller.Service.Name)
-		assert.Equal(t, "test-data", controller.Repo.Data)
-	})
-
-	t.Run("it should not care about registering order when resolving dependencies", func(t *testing.T) {
-		// GIVEN
-		resolver := New()
-		err := resolver.Register(NewTestController)
-		require.NoError(t, err)
-		err = resolver.Register(NewTestService)
-		require.NoError(t, err)
-		err = resolver.Register(NewTestRepository)
-		require.NoError(t, err)
-
-		// WHEN
-		controller, err := Resolve[*TestController](resolver)
-
-		// THEN
-		require.NoError(t, err)
-
-		require.NoError(t, err)
-		assert.NotNil(t, controller)
-		assert.Equal(t, "test-service", controller.Service.Name)
-		assert.Equal(t, "test-data", controller.Repo.Data)
-	})
-
-	t.Run("it should fail if provider is not a function", func(t *testing.T) {
-		// GIVEN
-		resolver := New()
-		notAFunction := "this is not a function"
-
-		// WHEN
-		err := resolver.Register(notAFunction)
-
-		// THEN
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "provider must be a function")
-	})
-
-	t.Run("it should fail if function returns wrong signature", func(t *testing.T) {
-		// GIVEN
-		resolver := New()
-
-		// WHEN
-		err := resolver.Register(func() string {
-			return "not a valid provider"
-		})
-
-		// THEN
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "provider must return two values")
-	})
-
 	t.Run("it should return singleton instances (same instance on multiple resolves)", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
@@ -562,6 +465,131 @@ func (n *NameSupplier) Name() string {
 }
 
 func TestResolver_Register(t *testing.T) {
+	t.Run("it should register a simple provider successfully", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		// WHEN
+		err := resolver.Register(NewTestService)
+
+		// THEN
+		require.NoError(t, err)
+
+		service, err := Resolve[*TestService](resolver)
+		require.NoError(t, err)
+		assert.NotNil(t, service)
+		assert.Equal(t, "test-service", service.Name)
+	})
+
+	t.Run("it should register multiple providers with dependencies", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		// WHEN
+		err := resolver.Register(NewTestService)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestRepository)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestController)
+		require.NoError(t, err)
+
+		// THEN
+		service, err := Resolve[*TestService](resolver)
+		require.NoError(t, err)
+		assert.NotNil(t, service)
+		assert.Equal(t, "test-service", service.Name)
+
+		repo, err := Resolve[*TestRepository](resolver)
+		require.NoError(t, err)
+		assert.NotNil(t, repo)
+		assert.Equal(t, "test-data", repo.Data)
+
+		controller, err := Resolve[*TestController](resolver)
+		require.NoError(t, err)
+		assert.NotNil(t, controller)
+		assert.NotNil(t, controller.Service)
+		assert.NotNil(t, controller.Repo)
+		assert.Equal(t, "test-service", controller.Service.Name)
+		assert.Equal(t, "test-data", controller.Repo.Data)
+	})
+
+	t.Run("it should not care about registering order when resolving dependencies", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestController)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestService)
+		require.NoError(t, err)
+		err = resolver.Register(NewTestRepository)
+		require.NoError(t, err)
+
+		// WHEN
+		controller, err := Resolve[*TestController](resolver)
+
+		// THEN
+		require.NoError(t, err)
+
+		require.NoError(t, err)
+		assert.NotNil(t, controller)
+		assert.Equal(t, "test-service", controller.Service.Name)
+		assert.Equal(t, "test-data", controller.Repo.Data)
+	})
+
+	t.Run("it should fail if provider is not a function", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		notAFunction := "this is not a function"
+
+		// WHEN
+		err := resolver.Register(notAFunction)
+
+		// THEN
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "provider must be a function")
+	})
+
+	t.Run("it should fail if function does not return anything", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		// WHEN
+		err := resolver.Register(func() {
+			// no return value
+		})
+
+		// THEN
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "provider must either return the instance and an error")
+	})
+
+	t.Run("it should fail if function does not return an error as second element", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		// WHEN
+		err := resolver.Register(func() (string, string) {
+			return "really", "not a valid provider"
+		})
+
+		// THEN
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "if provider returns two elements, it must return an error")
+	})
+
+	t.Run("it should fail if function does return more than two elements", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		// WHEN
+		err := resolver.Register(func() (string, string, error) {
+			return "really", "not a valid provider", nil
+		})
+
+		// THEN
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "provider must either return the instance and an error")
+	})
+
 	t.Run("it should allows to register with custom name", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
@@ -700,6 +728,23 @@ func TestResolver_Register(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, names, 1)
 		assert.Equal(t, "Arshinov", names[0].Name())
+	})
+
+	t.Run("it should allow to register provider that don't return errors", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(func() *TestService {
+			return &TestService{Name: "test-service"}
+		})
+		require.NoError(t, err)
+
+		// WHEN
+		service, err := Resolve[*TestService](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.NotNil(t, service)
+		assert.Equal(t, "test-service", service.Name)
 	})
 }
 

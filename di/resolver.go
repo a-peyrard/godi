@@ -126,11 +126,13 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		return errors.New("provider must be a function")
 	}
 
-	if t.NumOut() != 2 {
-		return errors.New("provider must return two values: an instance and an error")
+	if t.NumOut() != 1 && t.NumOut() != 2 {
+		return errors.New("provider must either return the instance and an error, or just the instance")
 	}
-	if t.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
-		return errors.New("provider must return an error as the second value")
+	if t.NumOut() == 2 {
+		if t.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
+			return errors.New("if provider returns two elements, it must return an error as the second element")
+		}
 	}
 
 	provides := t.Out(0)
@@ -418,7 +420,7 @@ func (r *Resolver) makeInstance(def *providerDef) (reflect.Value, error) {
 		return reflect.Value{}, callErr
 	}
 
-	if !results[1].IsNil() {
+	if len(results) == 2 && !results[1].IsNil() {
 		return reflect.Value{}, results[1].Interface().(error)
 	}
 
