@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/a-peyrard/godi/di"
+	"github.com/a-peyrard/godi"
 	"github.com/rs/zerolog"
 	"io"
 	"os"
@@ -85,7 +85,7 @@ func (a *App) Run() {
 
 func main() {
 	// should be done in modules, each module registers its own providers
-	resolver := di.New()
+	resolver := godi.New()
 
 	if err := resolver.Register(NewFoobar); err != nil {
 		fmt.Printf("Error registering Foobar provider: %v\n", err)
@@ -103,7 +103,7 @@ func main() {
 		fmt.Printf("Error registering App provider: %v\n", err)
 		return
 	}
-	if err := resolver.Register(NewProdEnvironment, di.Named("NameProvider")); err != nil {
+	if err := resolver.Register(NewProdEnvironment, godi.Named("NameProvider")); err != nil {
 		fmt.Printf("Error registering prod NameProvider provider: %v\n", err)
 		return
 	}
@@ -111,12 +111,12 @@ func main() {
 	appEnv := os.Getenv("APP_ENV")
 	switch appEnv {
 	case "dev":
-		if err := resolver.Register(NewDevEnvironment, di.Named("NameProvider"), di.Priority(100)); err != nil {
+		if err := resolver.Register(NewDevEnvironment, godi.Named("NameProvider"), godi.Priority(100)); err != nil {
 			fmt.Printf("Error registering dev NameProvider provider: %v\n", err)
 			return
 		}
 	case "test":
-		if err := resolver.Register(NewTestEnvironment, di.Named("NameProvider"), di.Priority(100)); err != nil {
+		if err := resolver.Register(NewTestEnvironment, godi.Named("NameProvider"), godi.Priority(100)); err != nil {
 			fmt.Printf("Error registering test NameProvider provider: %v\n", err)
 			return
 		}
@@ -124,7 +124,7 @@ func main() {
 	}
 
 	// RUN THE APP
-	app, err := di.Resolve[*App](resolver)
+	app, err := godi.Resolve[*App](resolver)
 	if err != nil {
 		fmt.Printf("Error resolving App: %v\n", err)
 		return

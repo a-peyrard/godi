@@ -1,14 +1,14 @@
-package di
+package godi
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/a-peyrard/godi/fn"
+	"github.com/a-peyrard/godi/heap"
 	"github.com/a-peyrard/godi/option"
 	"github.com/a-peyrard/godi/runner"
 	"github.com/a-peyrard/godi/slices"
-	"github.com/a-peyrard/godi/heap"
-	"github.com/a-peyrard/godi/fn"
 	"path/filepath"
 	"reflect"
 	"runtime"
