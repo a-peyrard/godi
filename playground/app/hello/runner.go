@@ -12,7 +12,7 @@ const sleepDuration = 2 * time.Second
 
 // NewHelloRunner creates a new Runnable that prints "Hello world" and sleeps for a specified duration.
 //
-// @provider named="hello.runner" priority=100
+// @provider named="hello.runner"
 func NewHelloRunner() runner.Runnable {
 	return runner.RunnableFunc(HelloRunner)
 }
