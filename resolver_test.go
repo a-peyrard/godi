@@ -1,7 +1,6 @@
 package godi
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -263,90 +262,6 @@ func TestResolver_Close(t *testing.T) {
 
 		// THEN
 		assert.Equal(t, int32(1), after-before)
-	})
-}
-
-var runCounter atomic.Int32
-
-type (
-	Coyote struct{}
-
-	LoadRunner struct{}
-
-	ContextRunner struct {
-		Hello string
-	}
-
-	greetKey struct{}
-)
-
-func (c *Coyote) Run(context.Context) error {
-	runCounter.Add(1)
-	return nil
-}
-
-func (l *LoadRunner) Run(context.Context) error {
-	runCounter.Add(1)
-	return nil
-}
-
-func (l *ContextRunner) Run(ctx context.Context) error {
-	val := ctx.Value(greetKey{}).(string)
-	if val == "" {
-		l.Hello = "Waldo"
-	} else {
-		l.Hello = val
-	}
-
-	return nil
-}
-
-func TestResolver_Run(t *testing.T) {
-	t.Run("it should run all runnables", func(t *testing.T) {
-		// GIVEN
-		resolver := New()
-		err := resolver.Register(func() (*Coyote, error) {
-			return &Coyote{}, nil
-		})
-		require.NoError(t, err)
-		err = resolver.Register(func() (*LoadRunner, error) {
-			return &LoadRunner{}, nil
-		})
-		require.NoError(t, err)
-		err = resolver.Register(NewTestController)
-
-		// WHEN
-		startingRunCount := runCounter.Load()
-		err = resolver.Run()
-		require.NoError(t, err)
-		endingRunCount := runCounter.Load()
-
-		// THEN
-		require.NoError(t, err)
-		assert.Equal(t, int32(2), endingRunCount-startingRunCount)
-	})
-
-	t.Run("it should use provided context if one is provided", func(t *testing.T) {
-		// GIVEN
-		resolver := New()
-		err := resolver.Register(func() (context.Context, error) {
-			ctx := context.WithValue(t.Context(), greetKey{}, "Augustin")
-			return ctx, nil
-		})
-		require.NoError(t, err)
-		err = resolver.Register(func() (*ContextRunner, error) {
-			return &ContextRunner{}, nil
-		})
-		require.NoError(t, err)
-
-		// WHEN
-		err = resolver.Run()
-		require.NoError(t, err)
-
-		// THEN
-		contextRunner, err := Resolve[*ContextRunner](resolver)
-		require.NoError(t, err)
-		assert.Equal(t, "Augustin", contextRunner.Hello)
 	})
 }
 

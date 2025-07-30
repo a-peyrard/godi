@@ -1,13 +1,11 @@
 package godi
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"github.com/a-peyrard/godi/fn"
 	"github.com/a-peyrard/godi/heap"
 	"github.com/a-peyrard/godi/option"
-	"github.com/a-peyrard/godi/runner"
 	"github.com/a-peyrard/godi/slices"
 	"path/filepath"
 	"reflect"
@@ -181,26 +179,6 @@ func (r *Resolver) MustRegister(provider Provider, opts ...option.Option[Registe
 		panic(fmt.Sprintf("failed to register provider %T: %v", provider, err))
 	}
 	return r
-}
-
-func (r *Resolver) Run() error {
-	ctx, found, err := TryResolve[context.Context](r)
-	if err != nil {
-		return fmt.Errorf("failed to resolve context: %w", err)
-	}
-	if !found {
-		ctx = context.Background()
-	}
-
-	runnables, err := ResolveAll[runner.Runnable](r)
-	if err != nil {
-		return fmt.Errorf("failed to resolve runnables: %w", err)
-	}
-	if len(runnables) == 0 {
-		return nil // nothing to run
-	}
-
-	return runner.RunAll(ctx, runnables...)
 }
 
 func (r *Resolver) Close() error {
