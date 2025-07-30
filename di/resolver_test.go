@@ -702,3 +702,32 @@ func TestResolver_Register(t *testing.T) {
 		assert.Equal(t, "Arshinov", names[0].Name())
 	})
 }
+
+func TestResolver_MustRegister(t *testing.T) {
+	t.Run("it should register provider successfully and return resolver for chaining", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		// WHEN
+		returnedResolver := resolver.MustRegister(NewTestService)
+
+		// THEN
+		assert.Same(t, resolver, returnedResolver)
+
+		service, err := Resolve[*TestService](resolver)
+		require.NoError(t, err)
+		assert.NotNil(t, service)
+	})
+
+	t.Run("it should panic when provider registration fails", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		// WHEN & THEN
+		assert.Panics(t, func() {
+			resolver.MustRegister(func() {
+				// not a valid provider function
+			})
+		})
+	})
+}

@@ -173,6 +173,14 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 	return nil
 }
 
+func (r *Resolver) MustRegister(provider Provider, opts ...option.Option[RegisterOptions]) *Resolver {
+	err := r.Register(provider, opts...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to register provider %T: %v", provider, err))
+	}
+	return r
+}
+
 func (r *Resolver) Run() error {
 	ctx, found, err := TryResolve[context.Context](r)
 	if err != nil {
