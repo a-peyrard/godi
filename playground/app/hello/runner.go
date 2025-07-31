@@ -21,7 +21,7 @@ func NewHelloRunner() runner.Runnable {
 //
 // @provider named="hello.runner" priority=100
 func NewDecorateHelloRunner(
-	helloRunnable runner.Runnable, // @named "hello.runner"
+	helloRunnable runner.Runnable, // @inject named="hello.runner"
 ) runner.Runnable {
 	return runner.RunnableFunc(func(ctx context.Context) error {
 		log.Println("Decorating HelloRunner")

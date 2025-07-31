@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/a-peyrard/godi/slices"
 	"github.com/rs/zerolog"
 	"go/ast"
 	"go/token"
@@ -11,6 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+)
+
+const (
+	providerAnnotationTag = "@provider"
+	injectAnnotationTag   = "@inject"
 )
 
 type (
@@ -181,13 +187,32 @@ func main() {
 							priority = p
 						}
 
+						var dependencies []string
+						if fn.Type.Params != nil {
+							for _, param := range fn.Type.Params.List {
+								for _, paramName := range param.Names {
+									loggerParam := logger.With().Str("param", paramName.Name).Logger()
+
+									comment := findCommentForParam(pkg.Fset, file, param)
+									var depName string
+									if comment != "" && strings.Contains(comment, injectAnnotationTag) {
+										injectAnnotation := parseInjectAnnotation(&loggerParam, comment)
+										if n, found := injectAnnotation.Named(); found {
+											depName = n
+										}
+									}
+									dependencies = append(dependencies, depName)
+								}
+							}
+						}
+
 						definitions = append(definitions, ProviderDefinition{
 							FnName:       file.Name.Name + "." + fn.Name.Name,
 							Description:  providerAnnotation.description,
 							ImportPath:   importPath,
 							Named:        named,
 							Priority:     priority,
-							Dependencies: []string{},
+							Dependencies: dependencies,
 						})
 					}
 				}
@@ -205,10 +230,7 @@ func main() {
 
 	logger.Info().Msgf("👨‍🔧 Registry found: %+v", registryDefinition)
 	logger.Info().Msgf("🎯 %d providers found in the module", len(definitions))
-	definitionsLogs := []string{}
-	for _, def := range definitions {
-		definitionsLogs = append(definitionsLogs, def.String())
-	}
+	definitionsLogs := slices.Map(definitions, ProviderDefinition.String)
 	logger.Debug().Msgf("Providers:\n%s", strings.Join(definitionsLogs, "\n----\n"))
 	logger.Info().Msgf("🕵️‍♂️ Scanning completed in %s", stopScan.Sub(startScan))
 }

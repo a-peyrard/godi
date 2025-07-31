@@ -79,6 +79,100 @@ func TestFilter(t *testing.T) {
 	})
 }
 
+func TestMap(t *testing.T) {
+	t.Run("it should transform strings to their lengths", func(t *testing.T) {
+		// GIVEN
+		input := []string{"foo", "bar", "hello", "augustin"}
+		mapper := func(s string) int {
+			return len(s)
+		}
+
+		// WHEN
+		result := Map(input, mapper)
+
+		// THEN
+		assert.Equal(t, []int{3, 3, 5, 8}, result)
+	})
+
+	t.Run("it should transform integers to strings", func(t *testing.T) {
+		// GIVEN
+		input := []int{1, 2, 3, 4, 5}
+		mapper := func(n int) string {
+			return string(rune('0' + n))
+		}
+
+		// WHEN
+		result := Map(input, mapper)
+
+		// THEN
+		assert.Equal(t, []string{"1", "2", "3", "4", "5"}, result)
+	})
+
+	t.Run("it should transform integers by doubling them", func(t *testing.T) {
+		// GIVEN
+		input := []int{1, 2, 3, 4, 5}
+		mapper := func(n int) int {
+			return n * 2
+		}
+
+		// WHEN
+		result := Map(input, mapper)
+
+		// THEN
+		assert.Equal(t, []int{2, 4, 6, 8, 10}, result)
+	})
+
+	t.Run("it should handle empty slice", func(t *testing.T) {
+		// GIVEN
+		var input []string
+		mapper := func(s string) int {
+			return len(s)
+		}
+
+		// WHEN
+		result := Map(input, mapper)
+
+		// THEN
+		assert.Empty(t, result)
+	})
+
+	t.Run("it should transform structs to their fields", func(t *testing.T) {
+		// GIVEN
+		type Person struct {
+			Name string
+			Age  int
+		}
+		input := []Person{
+			{Name: "Alice", Age: 30},
+			{Name: "Bob", Age: 25},
+			{Name: "Charlie", Age: 35},
+		}
+		mapper := func(p Person) string {
+			return p.Name
+		}
+
+		// WHEN
+		result := Map(input, mapper)
+
+		// THEN
+		assert.Equal(t, []string{"Alice", "Bob", "Charlie"}, result)
+	})
+
+	t.Run("it should handle single element slice", func(t *testing.T) {
+		// GIVEN
+		input := []string{"test"}
+		mapper := func(s string) int {
+			return len(s)
+		}
+
+		// WHEN
+		result := Map(input, mapper)
+
+		// THEN
+		assert.Equal(t, []int{4}, result)
+	})
+}
+
 func TestUnsafeMap(t *testing.T) {
 	t.Run("it should transform strings to their lengths", func(t *testing.T) {
 		// GIVEN
