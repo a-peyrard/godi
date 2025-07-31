@@ -17,23 +17,23 @@ func NewHelloRunner() runner.Runnable {
 	return runner.RunnableFunc(HelloRunner)
 }
 
-// NewDecorateHelloRunner creates a new Runnable that prints "Hello world" and sleeps for a specified duration.
-//
-// @provider named="hello.runner" priority=100
-func NewDecorateHelloRunner(
-	helloRunnable runner.Runnable, // @inject named="hello.runner"
-) runner.Runnable {
-	return runner.RunnableFunc(func(ctx context.Context) error {
-		log.Println("Decorating HelloRunner")
-		err := helloRunnable.Run(ctx)
-		if err != nil {
-			log.Printf("HelloRunner failed: %v", err)
-			return err
-		}
-		log.Println("HelloRunner completed successfully")
-		return nil
-	})
-}
+//// NewDecorateHelloRunner creates a new Runnable that prints "Hello world" and sleeps for a specified duration.
+////
+//// @provider named="hello.runner" priority=100
+//func NewDecorateHelloRunner(
+//	helloRunnable runner.Runnable, // @inject named="hello.runner"
+//) runner.Runnable {
+//	return runner.RunnableFunc(func(ctx context.Context) error {
+//		log.Println("Decorating HelloRunner")
+//		err := helloRunnable.Run(ctx)
+//		if err != nil {
+//			log.Printf("HelloRunner failed: %v", err)
+//			return err
+//		}
+//		log.Println("HelloRunner completed successfully")
+//		return nil
+//	})
+//}
 
 //goland:noinspection GoNameStartsWithPackageName
 func HelloRunner(ctx context.Context) error {

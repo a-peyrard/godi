@@ -233,4 +233,17 @@ func main() {
 	definitionsLogs := slices.Map(definitions, ProviderDefinition.String)
 	logger.Debug().Msgf("Providers:\n%s", strings.Join(definitionsLogs, "\n----\n"))
 	logger.Info().Msgf("🕵️‍♂️ Scanning completed in %s", stopScan.Sub(startScan))
+
+	// generate the code
+	outputPath := filepath.Join(
+		filepath.Dir(targetFilePath),
+		strings.TrimSuffix(filepath.Base(targetFilePath), ".go")+"_gen.go",
+	)
+	err = generateCode(outputPath, registryDefinition, definitions)
+	if err != nil {
+		logger.Error().Err(err).Msgf("Failed to generate code in %s", outputPath)
+		os.Exit(1)
+	} else {
+		logger.Info().Msgf("✅ Code generated successfully in %s", outputPath)
+	}
 }

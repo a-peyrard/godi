@@ -12,12 +12,4 @@ func (Registry) Register(resolver *godi.Resolver) {
 		hello.NewHelloRunner,
 		godi.Named("hello.runner"),
 	)
-	resolver.MustRegister(
-		hello.NewDecorateHelloRunner,
-		godi.Named("hello.runner"),
-		godi.Priority(100),
-		godi.Dependencies(
-			godi.Inject.Auto(),
-		),
-	)
 }
