@@ -5,6 +5,7 @@ import (
 	"github.com/a-peyrard/godi/slices"
 	"os"
 	stdslices "slices"
+	"strings"
 	"text/template"
 )
 
@@ -38,6 +39,19 @@ func toProviderForTemplate(p ProviderDefinition) ProviderForTemplate {
 	}
 	if p.Priority != 0 {
 		options = append(options, fmt.Sprintf("godi.Priority(%d)", p.Priority))
+	}
+
+	var dependencies []string
+	for _, dep := range p.Dependencies {
+		if dep != "" {
+			dependencies = append(dependencies, fmt.Sprintf("di.Inject.Named(\"%s\")", dep))
+		} else {
+			dependencies = append(dependencies, "di.Inject.Auto()")
+		}
+	}
+	if len(dependencies) > 0 {
+		depStr := "godi.Dependencies(\n\t\t\t" + strings.Join(dependencies, ",\n\t\t\t") + ",\n\t\t)"
+		options = append(options, depStr)
 	}
 
 	return ProviderForTemplate{

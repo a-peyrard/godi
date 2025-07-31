@@ -30,7 +30,7 @@ type (
 		name Name
 
 		factory      reflect.Value
-		dependencies []reflect.Type
+		dependencies []Query
 
 		instance *reflect.Value
 
@@ -55,8 +55,13 @@ type (
 	}
 
 	RegisterOptions struct {
-		named    string
-		priority int
+		named        string
+		priority     int
+		dependencies []dependency
+	}
+
+	dependency struct {
+		named string
 	}
 )
 
@@ -70,6 +75,24 @@ func Priority(priority int) option.Option[RegisterOptions] {
 	return func(opts *RegisterOptions) {
 		opts.priority = priority
 	}
+}
+
+func Dependencies(dependencies ...dependency) option.Option[RegisterOptions] {
+	return func(opts *RegisterOptions) {
+		opts.dependencies = dependencies
+	}
+}
+
+var Inject = &injectBuilder{}
+
+type injectBuilder struct{}
+
+func (i *injectBuilder) Named(name string) dependency {
+	return dependency{named: name}
+}
+
+func (i *injectBuilder) Auto() dependency {
+	return dependency{}
 }
 
 func (n Name) String() string {
@@ -133,14 +156,7 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		}
 	}
 
-	provides := t.Out(0)
-	paramTypes := make([]reflect.Type, t.NumIn())
-	for i := 0; i < t.NumIn(); i++ {
-		paramType := t.In(i)
-		paramTypes[i] = paramType
-	}
 	funcName := runtime.FuncForPC(reflect.ValueOf(provider).Pointer()).Name()
-
 	options := option.Build(
 		&RegisterOptions{
 			named:    filepath.Base(funcName),
@@ -148,6 +164,18 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		},
 		opts...,
 	)
+
+	provides := t.Out(0)
+	paramQueries := make([]Query, t.NumIn())
+	for i := 0; i < t.NumIn(); i++ {
+		paramType := t.In(i)
+		depDef, found := tryGetAt(options.dependencies, i)
+		if found && depDef.named != "" {
+			paramQueries[i] = newQueryByName(Name{name: depDef.named, providedType: paramType})
+		} else {
+			paramQueries[i] = newQueryByType(paramType)
+		}
+	}
 
 	name := Name{
 		name:         options.named,
@@ -165,12 +193,19 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		name: name,
 
 		factory:      reflect.ValueOf(provider),
-		dependencies: paramTypes,
+		dependencies: paramQueries,
 
 		priority: options.priority,
 	})
 
 	return nil
+}
+
+func tryGetAt[T any](slice []T, index int) (val T, found bool) {
+	if index < 0 || index >= len(slice) {
+		return val, false
+	}
+	return slice[index], true
 }
 
 func (r *Resolver) MustRegister(provider Provider, opts ...option.Option[RegisterOptions]) *Resolver {
@@ -330,7 +365,9 @@ func (r *Resolver) getOne(query Query) (*providerDef, error) {
 		return nil, fmt.Errorf("no provider found for query: %v", query)
 	}
 	if len(basket) > 1 {
-		return nil, fmt.Errorf("multiple providers found for query: %v, found: %d, use a more precise query", query, len(basket))
+		return nil, fmt.Errorf("multiple providers found for query: %v, found: %d, use a more precise query\n%v", query, len(basket), slices.Map(basket, func(input *providerDef) (output Name) {
+			return input.name
+		}))
 	}
 
 	return basket[0], nil
@@ -370,13 +407,13 @@ func (r *Resolver) instantiate(provider *providerDef) (reflect.Value, error) {
 func (r *Resolver) makeInstance(def *providerDef) (reflect.Value, error) {
 	fmt.Printf("Resolving %s, need dependencies: %v\n", def.name, def.dependencies)
 	dependencies := make([]reflect.Value, len(def.dependencies))
-	for i, depType := range def.dependencies {
-		dep, err := r.resolve(newQueryByType(depType))
+	for i, depQuery := range def.dependencies {
+		dep, err := r.resolve(depQuery)
 		if err != nil {
-			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %s for provider %s: %w", depType.String(), def.name.String(), err)
+			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %s for provider %s: %w", depQuery, def.name, err)
 		}
 		if !dep.IsValid() {
-			return reflect.Value{}, fmt.Errorf("resolved dependency %s is invalid for provider %s", depType.String(), def.name.String())
+			return reflect.Value{}, fmt.Errorf("resolved dependency %s is invalid for provider %s", depQuery, def.name)
 		}
 		dependencies[i] = dep
 	}

@@ -373,6 +373,12 @@ type (
 	NameSupplier struct {
 		name string
 	}
+
+	ComplexComponent struct {
+		foo    string
+		answer int
+		bar    string
+	}
 )
 
 func (n *NameSupplier) Name() string {
@@ -538,6 +544,53 @@ func TestResolver_Register(t *testing.T) {
 
 		assert.Equal(t, "Augustin", firstName.Name())
 		assert.Equal(t, "Peyrard", lastName.Name())
+	})
+
+	t.Run("it should allows to register with named dependencies", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(
+			func(foo string, answer int, bar string) *ComplexComponent {
+				return &ComplexComponent{
+					foo:    foo,
+					answer: answer,
+					bar:    bar,
+				}
+			},
+			Dependencies(
+				Inject.Named("myFoo"),
+				Inject.Auto(),
+				Inject.Named("myBar"),
+			),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the foo string"
+			},
+			Named("myFoo"),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the bar string"
+			},
+			Named("myBar"),
+		)
+		resolver.MustRegister(
+			func() int {
+				return 42
+			},
+			Named("answer to everything"),
+		)
+
+		// WHEN
+		complexComp, err := Resolve[*ComplexComponent](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.NotNil(t, complexComp)
+		assert.Equal(t, "this is the foo string", complexComp.foo)
+		assert.Equal(t, 42, complexComp.answer)
+		assert.Equal(t, "this is the bar string", complexComp.bar)
 	})
 
 	t.Run("it should allows to register with custom priority and take precedence when resolving", func(t *testing.T) {
