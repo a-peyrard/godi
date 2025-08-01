@@ -3,6 +3,7 @@ package godi
 import (
 	"errors"
 	"fmt"
+	"github.com/a-peyrard/godi/slices"
 	"io"
 	"sync/atomic"
 	"testing"
@@ -178,8 +179,10 @@ func TestResolver(t *testing.T) {
 
 		// THEN
 		require.NoError(t, err)
-		assert.Len(t, resolved, 2)
-		types := []string{fmt.Sprintf("%T", resolved[0]), fmt.Sprintf("%T", resolved[1])}
+		assert.Len(t, resolved, 3) // our 2 services, and the resolver itself!
+		types := slices.Map(resolved, func(c io.Closer) string {
+			return fmt.Sprintf("%T", c)
+		})
 		assert.Contains(t, types, "*godi.TestService")
 		assert.Contains(t, types, "*godi.TestRepository")
 	})
@@ -883,6 +886,28 @@ func TestResolver_Register(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, service)
 		assert.Equal(t, "test-service", service.Name)
+	})
+
+	t.Run("it should allow to inject resolver into a provider", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(func(r *Resolver) (*TestService, error) {
+			dynResolution, err := ResolveNamed[string](r, "str.foo")
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve str.foo: %w", err)
+			}
+			return &TestService{Name: dynResolution}, nil
+		})
+		resolver.MustRegister(ToStaticProvider("hello world"), Named("str.foo"))
+		resolver.MustRegister(ToStaticProvider("waldo"), Named("str.bar"))
+
+		// WHEN
+		service, err := Resolve[*TestService](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.NotNil(t, service)
+		assert.Equal(t, "hello world", service.Name)
 	})
 }
 

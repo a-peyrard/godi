@@ -79,9 +79,14 @@ func Dependencies(dependencies ...dependency) option.Option[RegisterOptions] {
 }
 
 func New() *Resolver {
-	return &Resolver{
+	r := &Resolver{
 		providers: make(map[Name]*heap.PriorityQueue[*providerDef]),
 	}
+	// register itself as a static provider if provider wants to resolve the resolver to
+	// dynamically be able to resolve dependencies (not using factory method parameter injection)
+	r.MustRegister(ToStaticProvider(r), Named("di.resolver"))
+
+	return r
 }
 
 func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOptions]) error {
