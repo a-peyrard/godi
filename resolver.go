@@ -121,7 +121,7 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		}
 		paramQueries[i], err = depDef.build(paramTyp)
 		if err != nil {
-			return fmt.Errorf("failed to build dependency for parameter %d of provider %s: %w", i, funcName, err)
+			return fmt.Errorf("failed to build dependency for parameter %d of provider %s:\n\t%w", i, funcName, err)
 		}
 	}
 
@@ -263,7 +263,7 @@ func TryResolve[T any](resolver *Resolver) (value T, found bool, err error) {
 func resolveTyped[T any](resolver *Resolver, req request) (val T, found bool, err error) {
 	resolved, found, err := resolver.resolve(req)
 	if err != nil {
-		return val, false, fmt.Errorf("failed to resolve request %s: %w", req, err)
+		return val, false, fmt.Errorf("failed to resolve request %s:\n\t%w", req, err)
 	}
 	if !found {
 		return val, false, nil
@@ -275,7 +275,7 @@ func resolveTyped[T any](resolver *Resolver, req request) (val T, found bool, er
 func (r *Resolver) resolve(req request) (val reflect.Value, found bool, err error) {
 	providers, err := r.get(req.query)
 	if err != nil {
-		return reflect.Value{}, false, fmt.Errorf("failed to resolve provider(s) from request %v: %w", req, err)
+		return reflect.Value{}, false, fmt.Errorf("failed to resolve provider(s) from request %v:\n\t%w", req, err)
 	}
 	return req.collector.collect(req.unitaryTyp, r, providers)
 }
@@ -296,7 +296,7 @@ func (r *Resolver) instantiate(provider *providerDef) (reflect.Value, error) {
 		var err error
 		instance, err = r.makeInstance(provider)
 		if err != nil {
-			return reflect.Value{}, fmt.Errorf("failed to generate instance for type %s: %w", provider.name, err)
+			return reflect.Value{}, fmt.Errorf("failed to generate instance for type %s:\n\t%w", provider.name, err)
 		}
 		provider.instance = &instance
 	} else {
@@ -312,7 +312,7 @@ func (r *Resolver) makeInstance(def *providerDef) (reflect.Value, error) {
 	for i, depRequest := range def.dependencies {
 		dep, _, err := r.resolve(depRequest)
 		if err != nil {
-			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %s for provider %s: %w", depRequest, def.name, err)
+			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %s for provider %s:\n\t%w", depRequest, def.name, err)
 		}
 		if !dep.IsValid() {
 			return reflect.Value{}, fmt.Errorf("resolved dependency %s is invalid for provider %s", depRequest, def.name)
