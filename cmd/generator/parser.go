@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/rs/zerolog"
 	"regexp"
 	"strconv"
@@ -39,16 +40,6 @@ func (p ProviderAnnotation) UnknownProperties() []string {
 		}
 	}
 	return unknown
-}
-
-type ParameterAnnotation struct {
-	logger     *zerolog.Logger
-	properties map[string]string
-}
-
-func (a ParameterAnnotation) Named() (named string, found bool) {
-	named, found = a.properties["named"]
-	return named, found
 }
 
 func parseProviderAnnotation(logger *zerolog.Logger, docText string) ProviderAnnotation {
@@ -107,14 +98,42 @@ func parseProperties(line string, tag string) map[string]string {
 	return properties
 }
 
-func parseInjectAnnotation(logger *zerolog.Logger, comment string) ParameterAnnotation {
+type InjectAnnotation struct {
+	logger     *zerolog.Logger
+	properties map[string]string
+}
+
+func (a InjectAnnotation) String() string {
+	return fmt.Sprintf("InjectAnnotation(\"%s\")", a.properties)
+}
+
+func (a InjectAnnotation) Named() (named string, found bool) {
+	named, found = a.properties["named"]
+	return named, found
+}
+
+func (a InjectAnnotation) Multiple() (multiple bool, found bool) {
+	var raw string
+	raw, found = a.properties["multiple"]
+	if !found {
+		return false, true
+	}
+	multiple, err := strconv.ParseBool(raw)
+	if err != nil {
+		a.logger.Warn().Err(err).Msg("Error parsing multiple, not a correct bool")
+		return false, found
+	}
+	return multiple, found
+}
+
+func parseInjectAnnotation(logger *zerolog.Logger, comment string) InjectAnnotation {
 	content := strings.TrimPrefix(comment, "//")
 	content = strings.TrimSpace(content)
 	if !strings.HasPrefix(content, injectAnnotationTag) {
-		return ParameterAnnotation{properties: make(map[string]string)}
+		return InjectAnnotation{properties: make(map[string]string)}
 	}
 
-	return ParameterAnnotation{
+	return InjectAnnotation{
 		logger:     logger,
 		properties: parseProperties(content, injectAnnotationTag),
 	}

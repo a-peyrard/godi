@@ -6,22 +6,21 @@ import (
 	"github.com/a-peyrard/godi/fn"
 	"github.com/a-peyrard/godi/heap"
 	"github.com/a-peyrard/godi/option"
-	"github.com/a-peyrard/godi/slices"
 	"path/filepath"
 	"reflect"
 	"runtime"
 )
 
 type (
-	Query interface {
-		Want(name Name) bool
-
-		fmt.Stringer
+	Name struct {
+		name string
+		typ  reflect.Type
 	}
 
-	Name struct {
-		name         string
-		providedType reflect.Type
+	request struct {
+		unitaryTyp reflect.Type
+		query      query
+		collector  collector
 	}
 
 	Provider any
@@ -30,7 +29,7 @@ type (
 		name Name
 
 		factory      reflect.Value
-		dependencies []Query
+		dependencies []request
 
 		instance *reflect.Value
 
@@ -39,14 +38,6 @@ type (
 
 	Resolver struct {
 		providers map[Name]*heap.PriorityQueue[*providerDef]
-	}
-
-	queryByType struct {
-		typ reflect.Type
-	}
-
-	queryByName struct {
-		name Name
 	}
 
 	// Closeable is an interface that can be used to close resources.
@@ -59,11 +50,15 @@ type (
 		priority     int
 		dependencies []dependency
 	}
-
-	dependency struct {
-		named string
-	}
 )
+
+func (n Name) String() string {
+	return fmt.Sprintf("(%s, %s)", n.name, n.typ.String())
+}
+
+func (r request) String() string {
+	return fmt.Sprintf("{q=%s c=%s}", r.query, r.collector)
+}
 
 func Named(name string) option.Option[RegisterOptions] {
 	return func(opts *RegisterOptions) {
@@ -81,58 +76,6 @@ func Dependencies(dependencies ...dependency) option.Option[RegisterOptions] {
 	return func(opts *RegisterOptions) {
 		opts.dependencies = dependencies
 	}
-}
-
-var Inject = &injectBuilder{}
-
-type injectBuilder struct{}
-
-func (i *injectBuilder) Named(name string) dependency {
-	return dependency{named: name}
-}
-
-func (i *injectBuilder) Auto() dependency {
-	return dependency{}
-}
-
-func (n Name) String() string {
-	return fmt.Sprintf("(%s, %s)", n.name, n.providedType.String())
-}
-
-func newQueryByType(typ reflect.Type) Query {
-	return &queryByType{
-		typ: typ,
-	}
-}
-
-func (q *queryByType) Want(n Name) bool {
-	return matchType(q.typ, n.providedType)
-}
-
-func (q *queryByType) String() string {
-	return fmt.Sprintf("<type ~= %s>", q.typ.String())
-}
-
-func newQueryByName(name Name) Query {
-	return &queryByName{name}
-}
-
-func (q queryByName) Want(n Name) bool {
-	return n.name == q.name.name && matchType(q.name.providedType, n.providedType)
-}
-
-func (q queryByName) String() string {
-	return fmt.Sprintf("<type ~= %s and name = %s>", q.name.providedType.String(), q.name.name)
-}
-
-func matchType(queryType, providedType reflect.Type) bool {
-	if queryType == providedType {
-		return true
-	}
-	if queryType.Kind() == reflect.Interface && providedType.Implements(queryType) {
-		return true
-	}
-	return false
 }
 
 func New() *Resolver {
@@ -165,21 +108,26 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		opts...,
 	)
 
-	provides := t.Out(0)
-	paramQueries := make([]Query, t.NumIn())
+	var (
+		provides     = t.Out(0)
+		paramQueries = make([]request, t.NumIn())
+		err          error
+	)
 	for i := 0; i < t.NumIn(); i++ {
-		paramType := t.In(i)
+		paramTyp := t.In(i)
 		depDef, found := tryGetAt(options.dependencies, i)
-		if found && depDef.named != "" {
-			paramQueries[i] = newQueryByName(Name{name: depDef.named, providedType: paramType})
-		} else {
-			paramQueries[i] = newQueryByType(paramType)
+		if !found {
+			depDef = defaultDependencyBuilder()
+		}
+		paramQueries[i], err = depDef.build(paramTyp)
+		if err != nil {
+			return fmt.Errorf("failed to build dependency for parameter %d of provider %s: %w", i, funcName, err)
 		}
 	}
 
 	name := Name{
-		name:         options.named,
-		providedType: provides,
+		name: options.named,
+		typ:  provides,
 	}
 
 	providers, exists := r.providers[name]
@@ -224,7 +172,7 @@ func (r *Resolver) Close() error {
 			continue
 		}
 		provider := providers.Peek()
-		if provider.instance != nil && provider.instance.IsValid() && provider.name.providedType.Implements(closeableType) {
+		if provider.instance != nil && provider.instance.IsValid() && provider.name.typ.Implements(closeableType) {
 			out := provider.instance.MethodByName("Close").Call(nil)
 			if len(out) != 1 || !out[0].IsNil() {
 				closeErrors = append(
@@ -245,7 +193,15 @@ func Resolve[T any](resolver *Resolver) (T, error) {
 		return zero, fmt.Errorf("type %T is not a valid type", zero)
 	}
 
-	return resolveInternal[T](resolver, newQueryByType(lookFor))
+	val, _, err := resolveTyped[T](
+		resolver,
+		request{
+			unitaryTyp: lookFor,
+			query:      queryByType{typ: lookFor},
+			collector:  collectorUniqueMandatory{},
+		},
+	)
+	return val, err
 }
 
 // ResolveNamed attempts to resolve a named component of type T from the resolver.
@@ -256,37 +212,32 @@ func ResolveNamed[T any](resolver *Resolver, name string) (T, error) {
 		return zero, fmt.Errorf("type %T is not a valid type", zero)
 	}
 
-	return resolveInternal[T](resolver, newQueryByName(Name{name: name, providedType: lookFor}))
-}
-
-func resolveInternal[T any](resolver *Resolver, query Query) (T, error) {
-	var zero T
-	resolved, err := resolver.resolve(query)
-	if err != nil {
-		return zero, fmt.Errorf("failed to resolve query %s: %w", query, err)
-	}
-	resolvedTyped, ok := resolved.Interface().(T)
-	if !ok {
-		return zero, fmt.Errorf("resolved provider is not of type %T", zero)
-	}
-
-	return resolvedTyped, nil
+	val, _, err := resolveTyped[T](
+		resolver,
+		request{
+			unitaryTyp: lookFor,
+			query: queryByName{
+				name: Name{name: name, typ: lookFor},
+			},
+			collector: collectorUniqueMandatory{},
+		},
+	)
+	return val, err
 }
 
 // ResolveAll attempts to resolve all components of type T from the resolver.
 func ResolveAll[T any](resolver *Resolver) ([]T, error) {
 	lookFor := reflect.TypeOf((*T)(nil)).Elem()
-	resolvedList, err := resolver.resolveAll(newQueryByType(lookFor))
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve all for type %s: %w", lookFor.String(), err)
-	}
-	return slices.UnsafeMap(resolvedList, func(resolved reflect.Value) (T, error) {
-		resolvedTyped, ok := resolved.Interface().(T)
-		if !ok {
-			return resolvedTyped, fmt.Errorf("resolved provider is not of type %s", lookFor.String())
-		}
-		return resolvedTyped, nil
-	})
+
+	val, _, err := resolveTyped[[]T](
+		resolver,
+		request{
+			unitaryTyp: lookFor,
+			query:      queryByType{typ: lookFor},
+			collector:  collectorMultipleAsSlice{},
+		},
+	)
+	return val, err
 }
 
 // TryResolve attempts to resolve a component of type T from the resolver.
@@ -299,93 +250,44 @@ func TryResolve[T any](resolver *Resolver) (value T, found bool, err error) {
 		return zero, false, fmt.Errorf("type %T is not a valid type", zero)
 	}
 
-	resolved, found, err := resolver.tryResolve(newQueryByType(lookFor))
+	return resolveTyped[T](
+		resolver,
+		request{
+			unitaryTyp: lookFor,
+			query:      queryByType{typ: lookFor},
+			collector:  collectorUniqueOptional{},
+		},
+	)
+}
+
+func resolveTyped[T any](resolver *Resolver, req request) (val T, found bool, err error) {
+	resolved, found, err := resolver.resolve(req)
 	if err != nil {
-		return zero, false, fmt.Errorf("failed to resolve type %s: %w", lookFor.String(), err)
+		return val, false, fmt.Errorf("failed to resolve request %s: %w", req, err)
 	}
 	if !found {
-		return zero, false, nil
+		return val, false, nil
 	}
-	resolvedTyped, ok := resolved.Interface().(T)
-	if !ok {
-		return zero, false, fmt.Errorf("resolved provider is not of type %s", lookFor.String())
-	}
-
-	return resolvedTyped, true, nil
+	val, err = unReflect[T](resolved)
+	return val, true, err
 }
 
-func (r *Resolver) resolve(query Query) (reflect.Value, error) {
-	provider, err := r.getOne(query)
+func (r *Resolver) resolve(req request) (val reflect.Value, found bool, err error) {
+	providers, err := r.get(req.query)
 	if err != nil {
-		return reflect.Value{}, fmt.Errorf("failed to get provider for query %v: %w", query, err)
+		return reflect.Value{}, false, fmt.Errorf("failed to resolve provider(s) from request %v: %w", req, err)
 	}
-	return r.instantiate(provider)
+	return req.collector.collect(req.unitaryTyp, r, providers)
 }
 
-func (r *Resolver) tryResolve(query Query) (val reflect.Value, found bool, err error) {
-	provider, found, err := r.findOne(query)
-	if err != nil {
-		return reflect.Value{}, false, fmt.Errorf("failed to get provider for query %v: %w", query, err)
-	}
-	if !found {
-		return reflect.Value{}, false, nil
-	}
-	val, err = r.instantiate(provider)
-	if err != nil {
-		return reflect.Value{}, false, fmt.Errorf("failed to instantiate provider %s: %w", provider.name, err)
-	}
-	return val, true, nil
-}
-
-func (r *Resolver) resolveAll(query Query) ([]reflect.Value, error) {
-	providers, err := r.get(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get providers for query %v: %w", query, err)
-	}
-	return slices.UnsafeMap(providers, r.instantiate)
-}
-
-func (r *Resolver) get(query Query) ([]*providerDef, error) {
+func (r *Resolver) get(query query) ([]*providerDef, error) {
 	var basket []*providerDef
 	for name, providers := range r.providers {
-		if query.Want(name) && providers.IsNotEmpty() {
+		if query.want(name) && providers.IsNotEmpty() {
 			basket = append(basket, providers.Peek())
 		}
 	}
 	return basket, nil
-}
-
-func (r *Resolver) getOne(query Query) (*providerDef, error) {
-	basket, err := r.get(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get providers for query %v: %w", query, err)
-	}
-
-	if len(basket) == 0 {
-		return nil, fmt.Errorf("no provider found for query: %v", query)
-	}
-	if len(basket) > 1 {
-		return nil, fmt.Errorf("multiple providers found for query: %v, found: %d, use a more precise query\n%v", query, len(basket), slices.Map(basket, func(input *providerDef) (output Name) {
-			return input.name
-		}))
-	}
-
-	return basket[0], nil
-}
-
-func (r *Resolver) findOne(query Query) (provider *providerDef, found bool, err error) {
-	basket, err := r.get(query)
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to get providers for query %v: %w", query, err)
-	}
-	if len(basket) == 0 {
-		return nil, false, nil
-	}
-	if len(basket) > 1 {
-		return nil, false, fmt.Errorf("multiple providers found for query: %v, found: %d, use a more precise query", query, len(basket))
-	}
-
-	return basket[0], true, nil
 }
 
 func (r *Resolver) instantiate(provider *providerDef) (reflect.Value, error) {
@@ -407,13 +309,13 @@ func (r *Resolver) instantiate(provider *providerDef) (reflect.Value, error) {
 func (r *Resolver) makeInstance(def *providerDef) (reflect.Value, error) {
 	fmt.Printf("Resolving %s, need dependencies: %v\n", def.name, def.dependencies)
 	dependencies := make([]reflect.Value, len(def.dependencies))
-	for i, depQuery := range def.dependencies {
-		dep, err := r.resolve(depQuery)
+	for i, depRequest := range def.dependencies {
+		dep, _, err := r.resolve(depRequest)
 		if err != nil {
-			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %s for provider %s: %w", depQuery, def.name, err)
+			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %s for provider %s: %w", depRequest, def.name, err)
 		}
 		if !dep.IsValid() {
-			return reflect.Value{}, fmt.Errorf("resolved dependency %s is invalid for provider %s", depQuery, def.name)
+			return reflect.Value{}, fmt.Errorf("resolved dependency %s is invalid for provider %s", depRequest, def.name)
 		}
 		dependencies[i] = dep
 	}
@@ -450,4 +352,12 @@ func compareByPriority(p1, p2 *providerDef) fn.ComparisonResult {
 		return fn.Greater
 	}
 	return fn.Equal
+}
+
+func unReflect[T any](v reflect.Value) (res T, err error) {
+	res, ok := v.Interface().(T)
+	if !ok {
+		return res, fmt.Errorf("value %v is not of type %T", v, res)
+	}
+	return res, nil
 }

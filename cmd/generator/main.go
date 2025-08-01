@@ -25,15 +25,11 @@ type (
 		Description string
 
 		FnName       string
-		Dependencies []string
+		Dependencies []InjectAnnotation
 
 		Priority int
 
 		ImportPath string
-	}
-
-	Dependency struct {
-		Named string
 	}
 
 	RegistryDefinition struct {
@@ -43,25 +39,20 @@ type (
 )
 
 func (p ProviderDefinition) String() string {
-	return fmt.Sprintf(`✨ Provider: %s
+	return fmt.Sprintf(
+		`✨ Provider: %s
 Description: %s
 Import Path: %s
 Named: %s
 Priority: %d
-Dependencies: [%s]`, p.FnName, p.Description, p.ImportPath, p.Named, p.Priority, strings.Join(p.Dependencies, ", "))
-}
-
-func formatType(expr ast.Expr) string {
-	switch t := expr.(type) {
-	case *ast.Ident:
-		return t.Name
-	case *ast.StarExpr:
-		return "*" + formatType(t.X)
-	case *ast.SelectorExpr:
-		return formatType(t.X) + "." + t.Sel.Name
-	default:
-		return "unknown"
-	}
+Dependencies: [%s]`,
+		p.FnName,
+		p.Description,
+		p.ImportPath,
+		p.Named,
+		p.Priority,
+		strings.Join(slices.Map(p.Dependencies, InjectAnnotation.String), ", "),
+	)
 }
 
 func findCommentForParam(fset *token.FileSet, file *ast.File, param *ast.Field) string {
@@ -187,21 +178,16 @@ func main() {
 							priority = p
 						}
 
-						var dependencies []string
+						dependencies := make([]InjectAnnotation, len(fn.Type.Params.List))
 						if fn.Type.Params != nil {
 							for _, param := range fn.Type.Params.List {
-								for _, paramName := range param.Names {
+								for idx, paramName := range param.Names {
 									loggerParam := logger.With().Str("param", paramName.Name).Logger()
 
-									comment := findCommentForParam(pkg.Fset, file, param)
-									var depName string
-									if comment != "" && strings.Contains(comment, injectAnnotationTag) {
-										injectAnnotation := parseInjectAnnotation(&loggerParam, comment)
-										if n, found := injectAnnotation.Named(); found {
-											depName = n
-										}
-									}
-									dependencies = append(dependencies, depName)
+									dependencies[idx] = parseInjectAnnotation(
+										&loggerParam,
+										findCommentForParam(pkg.Fset, file, param),
+									)
 								}
 							}
 						}

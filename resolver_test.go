@@ -88,7 +88,7 @@ func TestResolver(t *testing.T) {
 
 		// THEN
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no provider found")
+		assert.Contains(t, err.Error(), "no providers found")
 	})
 
 	t.Run("it should fail when provider function returns an error", func(t *testing.T) {
@@ -137,7 +137,7 @@ func TestResolver(t *testing.T) {
 
 		// THEN
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "multiple providers found for query")
+		assert.Contains(t, err.Error(), "multiple providers found for")
 	})
 
 	t.Run("it should allow to resolve all providers for a given type", func(t *testing.T) {
@@ -375,9 +375,11 @@ type (
 	}
 
 	ComplexComponent struct {
-		foo    string
-		answer int
-		bar    string
+		foo         string
+		answer      int
+		bar         string
+		tokens      []string
+		namedTokens map[string]string
 	}
 )
 
@@ -591,6 +593,174 @@ func TestResolver_Register(t *testing.T) {
 		assert.Equal(t, "this is the foo string", complexComp.foo)
 		assert.Equal(t, 42, complexComp.answer)
 		assert.Equal(t, "this is the bar string", complexComp.bar)
+	})
+
+	t.Run("it should allows to register with slice as a dependency resolving all", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(
+			func(tokens []string) *ComplexComponent {
+				return &ComplexComponent{
+					tokens: tokens,
+				}
+			},
+			Dependencies(
+				Inject.Multiple(),
+			),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the foo string"
+			},
+			Named("myFoo"),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the bar string"
+			},
+			Named("myBar"),
+		)
+		resolver.MustRegister(
+			func() int {
+				return 42
+			},
+			Named("answer to everything"),
+		)
+
+		// WHEN
+		complexComp, err := Resolve[*ComplexComponent](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.NotNil(t, complexComp)
+		assert.Len(t, complexComp.tokens, 2)
+		assert.Contains(t, complexComp.tokens, "this is the foo string")
+		assert.Contains(t, complexComp.tokens, "this is the bar string")
+	})
+
+	t.Run("it should just treat slice as regular dependencies if multiple is not specified", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(
+			func(tokens []string) *ComplexComponent {
+				return &ComplexComponent{
+					tokens: tokens,
+				}
+			},
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the foo string"
+			},
+			Named("myFoo"),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the bar string"
+			},
+			Named("myBar"),
+		)
+		resolver.MustRegister(
+			func() []string {
+				return []string{"hello", "Augustin", "how are you?"}
+			},
+			Named("some strings"),
+		)
+
+		// WHEN
+		complexComp, err := Resolve[*ComplexComponent](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.NotNil(t, complexComp)
+		assert.Len(t, complexComp.tokens, 3)
+		assert.Equal(t, []string{"hello", "Augustin", "how are you?"}, complexComp.tokens)
+	})
+
+	t.Run("it should allows to use map as a container for dependencies tagged as multiple", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(
+			func(namedTokens map[string]string) *ComplexComponent {
+				return &ComplexComponent{
+					namedTokens: namedTokens,
+				}
+			},
+			Dependencies(
+				Inject.Multiple(),
+			),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the foo string"
+			},
+			Named("myFoo"),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the bar string"
+			},
+			Named("myBar"),
+		)
+		resolver.MustRegister(
+			func() int {
+				return 42
+			},
+			Named("answer to everything"),
+		)
+
+		// WHEN
+		complexComp, err := Resolve[*ComplexComponent](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.NotNil(t, complexComp)
+		assert.Len(t, complexComp.namedTokens, 2)
+		assert.Equal(t, "this is the foo string", complexComp.namedTokens["myFoo"])
+		assert.Equal(t, "this is the bar string", complexComp.namedTokens["myBar"])
+	})
+
+	t.Run("it should handle map as regular components if not tagged as multiple", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(
+			func(namedTokens map[string]string) *ComplexComponent {
+				return &ComplexComponent{
+					namedTokens: namedTokens,
+				}
+			},
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the foo string"
+			},
+			Named("myFoo"),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "this is the bar string"
+			},
+			Named("myBar"),
+		)
+		resolver.MustRegister(
+			func() map[string]string {
+				return map[string]string{
+					"foo":   "bar",
+					"hello": "world",
+				}
+			},
+			Named("answer to everything"),
+		)
+
+		// WHEN
+		complexComp, err := Resolve[*ComplexComponent](resolver)
+
+		// THEN
+		require.NoError(t, err)
+		assert.NotNil(t, complexComp)
+		assert.Len(t, complexComp.namedTokens, 2)
+		assert.Equal(t, "bar", complexComp.namedTokens["foo"])
+		assert.Equal(t, "world", complexComp.namedTokens["hello"])
 	})
 
 	t.Run("it should allows to register with custom priority and take precedence when resolving", func(t *testing.T) {

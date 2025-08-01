@@ -43,11 +43,18 @@ func toProviderForTemplate(p ProviderDefinition) ProviderForTemplate {
 
 	var dependencies []string
 	for _, dep := range p.Dependencies {
-		if dep != "" {
-			dependencies = append(dependencies, fmt.Sprintf("di.Inject.Named(\"%s\")", dep))
-		} else {
-			dependencies = append(dependencies, "di.Inject.Auto()")
+		multiple, found := dep.Multiple()
+		if found && multiple {
+			dependencies = append(dependencies, "godi.Inject.Multiple()")
+			continue
 		}
+
+		named, found := dep.Named()
+		if found {
+			dependencies = append(dependencies, fmt.Sprintf("godi.Inject.Named(\"%s\")", named))
+			continue
+		}
+		dependencies = append(dependencies, "godi.Inject.Auto()")
 	}
 	if len(dependencies) > 0 {
 		depStr := "godi.Dependencies(\n\t\t\t" + strings.Join(dependencies, ",\n\t\t\t") + ",\n\t\t)"
