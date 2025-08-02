@@ -32,3 +32,13 @@ func UnsafeMap[F any, T any](original []F, mapper func(F) (T, error)) ([]T, erro
 	}
 	return destination, nil
 }
+
+// FlatMap transforms each element of the slice using the provided mapper function and flattens the results.
+func FlatMap[F any, T any](original []F, mapper func(F) []T) []T {
+	var result []T
+	for _, item := range original {
+		mapped := mapper(item)
+		result = append(result, mapped...)
+	}
+	return result
+}

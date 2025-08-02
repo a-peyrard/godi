@@ -17,6 +17,7 @@ import (
 const (
 	providerAnnotationTag = "@provider"
 	injectAnnotationTag   = "@inject"
+	configAnnotationTag   = "@config"
 )
 
 type (
@@ -24,12 +25,18 @@ type (
 		Named       string
 		Description string
 
-		FnName       string
-		Dependencies []InjectAnnotation
-
-		Priority int
-
+		FnName     string
 		ImportPath string
+
+		Dependencies []InjectAnnotation
+		Priority     int
+	}
+
+	ConfigDefinition struct {
+		TypeName   string
+		ImportPath string
+		Fields     []FieldAnalysis
+		Annotation ConfigAnnotation
 	}
 
 	RegistryDefinition struct {
@@ -52,6 +59,23 @@ Dependencies: [%s]`,
 		p.Named,
 		p.Priority,
 		strings.Join(slices.Map(p.Dependencies, InjectAnnotation.String), ", "),
+	)
+}
+
+func (c ConfigDefinition) String() string {
+	return fmt.Sprintf(
+		`📦 Config: %s
+Import Path: %s
+Fields: [%s]`,
+		c.TypeName,
+		c.ImportPath,
+		strings.Join(slices.Map(c.Fields, func(f FieldAnalysis) string {
+			typeName := f.TypeName
+			if f.ImportPath != "" {
+				typeName = f.ImportPath + "." + typeName
+			}
+			return fmt.Sprintf("%s (%s)", f.Path, typeName)
+		}), ", "),
 	)
 }
 
@@ -85,6 +109,8 @@ func findModuleRoot() string {
 }
 
 func main() {
+	dryRun := os.Getenv("DRY_RUN") == "true"
+
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.DateTime}).
 		With().
@@ -110,7 +136,8 @@ func main() {
 	// we are looking for multiple things:
 	// - functions annotated with @provider
 	// - a struct that embeds godi.EmptyRegistry
-	var definitions []ProviderDefinition
+	var providerDefinitions []ProviderDefinition
+	var configDefinitions []ConfigDefinition
 	var registryDefinition *RegistryDefinition
 
 	cfg := &packages.Config{
@@ -118,9 +145,15 @@ func main() {
 	}
 	pkgs, _ := packages.Load(cfg, "./...")
 
+	allPackages := make(map[string]*packages.Package)
 	for _, pkg := range pkgs {
-		logger.Debug().Msgf("scanning package '%s'", pkg.ID)
+		allPackages[pkg.PkgPath] = pkg
+		allPackages[pkg.ID] = pkg
+	}
 
+	for _, pkg := range pkgs {
+		logger := logger.With().Str("package", pkg.ID).Logger()
+		logger.Debug().Msg("Scanning package")
 		for _, file := range pkg.Syntax {
 			filePath := pkg.Fset.Position(file.Pos()).Filename
 			packageName := file.Name.Name
@@ -139,8 +172,9 @@ func main() {
 											if sel, ok := field.Type.(*ast.SelectorExpr); ok {
 												if ident, ok := sel.X.(*ast.Ident); ok {
 													if ident.Name == "godi" && sel.Sel.Name == "EmptyRegistry" {
-														logger.Debug().Msgf("=> Found Registry struct: %s in package %s",
-															typeSpec.Name.Name, packageName)
+														logger := logger.With().Str("struct", typeSpec.Name.Name).Logger()
+
+														logger.Debug().Msg("=> Found Registry")
 														registryDefinition = &RegistryDefinition{
 															PackageName: packageName,
 															StructName:  typeSpec.Name.Name,
@@ -164,7 +198,7 @@ func main() {
 					if fn.Doc != nil && strings.Contains(fn.Doc.Text(), "@provider") {
 						logger := logger.With().Str("provider", fn.Name.Name).Logger()
 
-						logger.Debug().Msgf("=> Found provider in %s", importPath)
+						logger.Debug().Msg("=> Found provider")
 						providerAnnotation := parseProviderAnnotation(&logger, fn.Doc.Text())
 
 						var (
@@ -192,14 +226,37 @@ func main() {
 							}
 						}
 
-						definitions = append(definitions, ProviderDefinition{
-							FnName:       file.Name.Name + "." + fn.Name.Name,
+						providerDefinitions = append(providerDefinitions, ProviderDefinition{
+							FnName:       fn.Name.Name,
 							Description:  providerAnnotation.description,
 							ImportPath:   importPath,
 							Named:        named,
 							Priority:     priority,
 							Dependencies: dependencies,
 						})
+					}
+				} else if genDecl, ok := n.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {
+					// look for structs annotated with @config
+					for _, spec := range genDecl.Specs {
+						if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+							if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+								if genDecl.Doc != nil && strings.Contains(genDecl.Doc.Text(), configAnnotationTag) {
+									logger := logger.With().Str("struct", typeSpec.Name.Name).Logger()
+
+									logger.Debug().Msg("=> Found config")
+
+									configDefinitions = append(
+										configDefinitions,
+										ConfigDefinition{
+											TypeName:   typeSpec.Name.Name,
+											ImportPath: importPath,
+											Fields:     analyzeConfigStruct(pkg, structType),
+											Annotation: parseConfigAnnotation(&logger, genDecl.Doc.Text()),
+										},
+									)
+								}
+							}
+						}
 					}
 				}
 				return true
@@ -215,9 +272,12 @@ func main() {
 	}
 
 	logger.Info().Msgf("👨‍🔧 Registry found: %+v", registryDefinition)
-	logger.Info().Msgf("🎯 %d providers found in the module", len(definitions))
-	definitionsLogs := slices.Map(definitions, ProviderDefinition.String)
+	logger.Info().Msgf("🎯 %d providers found in the module", len(providerDefinitions))
+	definitionsLogs := slices.Map(providerDefinitions, ProviderDefinition.String)
 	logger.Debug().Msgf("Providers:\n%s", strings.Join(definitionsLogs, "\n----\n"))
+	logger.Info().Msgf("🎯 %d config found in the module", len(configDefinitions))
+	configsLogs := slices.Map(configDefinitions, ConfigDefinition.String)
+	logger.Debug().Msgf("Configs:\n%s", strings.Join(configsLogs, "\n----\n"))
 	logger.Info().Msgf("🕵️‍♂️ Scanning completed in %s", stopScan.Sub(startScan))
 
 	// generate the code
@@ -225,7 +285,11 @@ func main() {
 		filepath.Dir(targetFilePath),
 		strings.TrimSuffix(filepath.Base(targetFilePath), ".go")+"_gen.go",
 	)
-	err = generateCode(outputPath, registryDefinition, definitions)
+	if dryRun {
+		outputPath = filepath.Join("/tmp", filepath.Base(outputPath))
+	}
+
+	err = generateCode(outputPath, registryDefinition, providerDefinitions, configDefinitions)
 	if err != nil {
 		logger.Error().Err(err).Msgf("Failed to generate code in %s", outputPath)
 		os.Exit(1)

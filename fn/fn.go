@@ -18,3 +18,15 @@ func ReverseComparator[T any](comparator Comparator[T]) Comparator[T] {
 		return comparator(i2, i1)
 	}
 }
+
+// BiConsumer represents a function that accepts two input arguments and returns no result.
+type BiConsumer[T1 any, T2 any] func(t1 T1, t2 T2)
+
+// AllBiConsumer creates a bi-consumer that will execute all the given bi-consumers.
+func AllBiConsumer[A any, B any](consumers ...BiConsumer[A, B]) BiConsumer[A, B] {
+	return func(a A, b B) {
+		for _, consumer := range consumers {
+			consumer(a, b)
+		}
+	}
+}

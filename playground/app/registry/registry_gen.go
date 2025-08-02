@@ -4,12 +4,58 @@ package registry
 
 import (
 	"github.com/a-peyrard/godi"
+	"github.com/a-peyrard/godi/config"
 	"github.com/a-peyrard/godi/playground/app/hello"
+	aconfig "github.com/a-peyrard/godi/playground/app/config"
 )
 
 func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		hello.NewHelloRunner,
 		godi.Named("hello.runner"),
+		godi.Dependencies(
+			godi.Inject.Named("Config.Foobar.Foo"),
+		),
+	)
+	resolver.MustRegister(
+		godi.ToStaticProvider("PG"),
+		godi.Named("EnvPrefix4Config"),
+	)
+	resolver.MustRegister(
+		func(envPrefix string) (*aconfig.Config, error) {
+			return config.Load[aconfig.Config](config.WithEnvPrefix(envPrefix))
+		},
+		godi.Named("Config"),
+		godi.Dependencies(
+			godi.Inject.Named("EnvPrefix4Config"),
+		),
+	)
+	resolver.MustRegister(
+		godi.ProvidesConfig[*aconfig.Config, string]("Environment"),
+		godi.Named("Config.Environment"),
+		godi.Dependencies(
+			godi.Inject.Named("Config"),
+		),
+	)
+	resolver.MustRegister(
+		godi.ProvidesConfig[*aconfig.Config, string]("EnvPrefixSeparator"),
+		godi.Named("Config.EnvPrefixSeparator"),
+		godi.Dependencies(
+			godi.Inject.Named("Config"),
+		),
+	)
+	resolver.MustRegister(
+		godi.ProvidesConfig[*aconfig.Config, *aconfig.FoobarConfig]("Foobar"),
+		godi.Named("Config.Foobar"),
+		godi.Dependencies(
+			godi.Inject.Named("Config"),
+		),
+	)
+	resolver.MustRegister(
+		godi.ProvidesConfig[*aconfig.Config, string]("Foobar.Foo"),
+		godi.Named("Config.Foobar.Foo"),
+		godi.Dependencies(
+			godi.Inject.Named("Config"),
+		),
 	)
 }

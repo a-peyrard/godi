@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/a-peyrard/godi/set"
 	"github.com/rs/zerolog"
 	"regexp"
 	"strconv"
@@ -30,12 +31,12 @@ func (p ProviderAnnotation) Named() (named string, found bool) {
 	return named, found
 }
 
-var knownProperties = []string{"priority", "named"}
+var knownProperties = set.NewWithValues("priority", "named")
 
 func (p ProviderAnnotation) UnknownProperties() []string {
 	var unknown []string
 	for key := range p.properties {
-		if !contains(knownProperties, key) {
+		if knownProperties.DoesNotContain(key) {
 			unknown = append(unknown, key)
 		}
 	}
@@ -139,11 +140,40 @@ func parseInjectAnnotation(logger *zerolog.Logger, comment string) InjectAnnotat
 	}
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
+type ConfigAnnotation struct {
+	logger     *zerolog.Logger
+	properties map[string]string
+}
+
+func (a ConfigAnnotation) String() string {
+	return fmt.Sprintf("ConfigAnnotation(\"%s\")", a.properties)
+}
+
+func (a ConfigAnnotation) Prefix() string {
+	prefix, found := a.properties["prefix"]
+	if !found {
+		prefix = ""
+	}
+	return prefix
+}
+
+func parseConfigAnnotation(logger *zerolog.Logger, docText string) ConfigAnnotation {
+	lines := strings.Split(docText, "\n")
+
+	var configLine string
+
+	// separate @config line from description
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		if strings.HasPrefix(line, configAnnotationTag) {
+			configLine = line
+			break
 		}
 	}
-	return false
+
+	return ConfigAnnotation{
+		logger:     logger,
+		properties: parseProperties(configLine, configAnnotationTag),
+	}
 }

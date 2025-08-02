@@ -13,8 +13,12 @@ const sleepDuration = 2 * time.Second
 // NewHelloRunner creates a new Runnable that prints "Hello world" and sleeps for a specified duration.
 //
 // @provider named="hello.runner"
-func NewHelloRunner() runner.Runnable {
-	return runner.RunnableFunc(HelloRunner)
+func NewHelloRunner(
+	fooBar string, // @inject named="Config.Foobar.Foo"
+) runner.Runnable {
+	return runner.RunnableFunc(func(ctx context.Context) error {
+		return HelloRunner(ctx, fooBar)
+	})
 }
 
 //// NewDecorateHelloRunner creates a new Runnable that prints "Hello world" and sleeps for a specified duration.
@@ -38,8 +42,8 @@ func NewHelloRunner() runner.Runnable {
 //}
 
 //goland:noinspection GoNameStartsWithPackageName
-func HelloRunner(ctx context.Context) error {
-	log.Println("Hello world")
+func HelloRunner(ctx context.Context, fooBar string) error {
+	log.Println("Hello world: " + fooBar)
 	log.Printf("sleeping for %s ", sleepDuration)
 	for i := 0; i < int(sleepDuration.Seconds()); i++ {
 		select {
