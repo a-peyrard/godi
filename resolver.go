@@ -9,7 +9,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"time"
 )
+
+const perfOutput = true
 
 type (
 	Name struct {
@@ -278,6 +281,13 @@ func resolveTyped[T any](resolver *Resolver, req request) (val T, found bool, er
 }
 
 func (r *Resolver) resolve(req request) (val reflect.Value, found bool, err error) {
+	if perfOutput {
+		start := time.Now()
+		defer func() {
+			fmt.Printf("resolved %s in %s\n", req, time.Since(start))
+		}()
+	}
+
 	providers, err := r.get(req.query)
 	if err != nil {
 		return reflect.Value{}, false, fmt.Errorf("failed to resolve provider(s) from request %v:\n\t%w", req, err)
