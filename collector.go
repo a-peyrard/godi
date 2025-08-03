@@ -55,8 +55,6 @@ func (c collectorMultipleAsSlice) String() string {
 	return "<multiple as slice>"
 }
 
-var StringType = reflect.TypeOf("")
-
 func (c collectorMultipleAsMap) collect(unitaryTyp reflect.Type, r *Resolver, providers []*providerDef) (val reflect.Value, found bool, err error) {
 	mapValue := reflect.MakeMapWithSize(reflect.MapOf(StringType, unitaryTyp), len(providers))
 	for _, provider := range providers {

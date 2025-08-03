@@ -26,6 +26,12 @@ type (
 		collector  collector
 	}
 
+	DynamicProvider interface {
+		CanBuild(name Name) bool
+		BuildProviderFor(name Name) (provider Provider, opts []option.Option[RegisterOptions], err error)
+		ListBuildableNames() []Name
+	}
+
 	Provider any
 
 	providerDef struct {
@@ -40,7 +46,8 @@ type (
 	}
 
 	Resolver struct {
-		providers map[Name]*heap.PriorityQueue[*providerDef]
+		providers        map[Name]*heap.PriorityQueue[*providerDef]
+		dynamicProviders []DynamicProvider
 	}
 
 	// Closeable is an interface that can be used to close resources.
@@ -94,16 +101,23 @@ func New() *Resolver {
 
 func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOptions]) error {
 	t := reflect.TypeOf(provider)
-	if t.Kind() != reflect.Func {
-		return errors.New("provider must be a function")
+	if t.Kind() == reflect.Func {
+		_, err := r.registerProviderFn(t, provider, opts...)
+		return err
+	} else if t.Implements(DynamicProviderType) {
+		return r.registerDynamicProvider(t, provider, opts...)
 	}
 
+	return errors.New("provider must be either a function or a DynamicProvider implementation")
+}
+
+func (r *Resolver) registerProviderFn(t reflect.Type, provider Provider, opts ...option.Option[RegisterOptions]) (*providerDef, error) {
 	if t.NumOut() != 1 && t.NumOut() != 2 {
-		return errors.New("provider must either return the instance and an error, or just the instance")
+		return nil, errors.New("provider must either return the instance and an error, or just the instance")
 	}
 	if t.NumOut() == 2 {
 		if t.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
-			return errors.New("if provider returns two elements, it must return an error as the second element")
+			return nil, errors.New("if provider returns two elements, it must return an error as the second element")
 		}
 	}
 
@@ -129,7 +143,7 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		}
 		paramQueries[i], err = depDef.build(paramTyp)
 		if err != nil {
-			return fmt.Errorf("failed to build dependency for parameter %d of provider %s:\n\t%w", i, funcName, err)
+			return nil, fmt.Errorf("failed to build dependency for parameter %d of provider %s:\n\t%w", i, funcName, err)
 		}
 	}
 
@@ -145,14 +159,21 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 		r.providers[name] = providers
 	}
 
-	r.providers[name].Push(&providerDef{
+	providerDef := &providerDef{
 		name: name,
 
 		factory:      reflect.ValueOf(provider),
 		dependencies: paramQueries,
 
 		priority: options.priority,
-	})
+	}
+	r.providers[name].Push(providerDef)
+
+	return providerDef, nil
+}
+
+func (r *Resolver) registerDynamicProvider(_ reflect.Type, provider Provider, _ ...option.Option[RegisterOptions]) error {
+	r.dynamicProviders = append(r.dynamicProviders, provider.(DynamicProvider))
 
 	return nil
 }
@@ -288,21 +309,11 @@ func (r *Resolver) resolve(req request) (val reflect.Value, found bool, err erro
 		}()
 	}
 
-	providers, err := r.get(req.query)
+	providers, err := req.query.find(r)
 	if err != nil {
 		return reflect.Value{}, false, fmt.Errorf("failed to resolve provider(s) from request %v:\n\t%w", req, err)
 	}
 	return req.collector.collect(req.unitaryTyp, r, providers)
-}
-
-func (r *Resolver) get(query query) ([]*providerDef, error) {
-	var basket []*providerDef
-	for name, providers := range r.providers {
-		if query.want(name) && providers.IsNotEmpty() {
-			basket = append(basket, providers.Peek())
-		}
-	}
-	return basket, nil
 }
 
 func (r *Resolver) instantiate(provider *providerDef) (reflect.Value, error) {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/a-peyrard/godi/slices"
+	"github.com/a-peyrard/godi/option"
 	"io"
 	"sync/atomic"
 	"testing"
@@ -471,7 +472,7 @@ func TestResolver_Register(t *testing.T) {
 
 		// THEN
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "provider must be a function")
+		assert.Contains(t, err.Error(), "provider must be either a function")
 	})
 
 	t.Run("it should fail if function does not return anything", func(t *testing.T) {
@@ -937,5 +938,131 @@ func TestResolver_MustRegister(t *testing.T) {
 				// not a valid provider function
 			})
 		})
+	})
+}
+
+type SomeDynamicProvider struct {
+	known      map[string]string
+	buildCount atomic.Int32
+}
+
+func (e *SomeDynamicProvider) CanBuild(name Name) bool {
+	if name.typ == StringType && name.name != "" {
+		_, found := e.known[name.name]
+		if found {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e *SomeDynamicProvider) BuildProviderFor(name Name) (provider Provider, opts []option.Option[RegisterOptions], err error) {
+	e.buildCount.Add(1)
+	return ToStaticProvider(e.known[name.name]), []option.Option[RegisterOptions]{Named(name.name)}, nil
+}
+
+func (e *SomeDynamicProvider) ListBuildableNames() []Name {
+	names := make([]Name, 0, len(e.known))
+	for key := range e.known {
+		names = append(names, Name{
+			name: key,
+			typ:  StringType,
+		})
+	}
+	return names
+}
+
+func TestResolver_DynamicProvider(t *testing.T) {
+	t.Run("it should register dynamic provider and allow to resolve by name", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		dynamicProvider := &SomeDynamicProvider{
+			known: map[string]string{
+				"str.foo": "hello world",
+				"str.bar": "waldo",
+			},
+		}
+
+		// WHEN
+		resolver.MustRegister(dynamicProvider)
+
+		// THEN
+		resolveNamed, err := ResolveNamed[string](resolver, "str.foo")
+		require.NoError(t, err)
+
+		assert.Equal(t, "hello world", resolveNamed)
+	})
+
+	t.Run("it should build provider only once", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		dynamicProvider := &SomeDynamicProvider{
+			known: map[string]string{
+				"str.foo": "hello world",
+				"str.bar": "waldo",
+			},
+		}
+		resolver.MustRegister(dynamicProvider)
+
+		// WHEN
+		_, err := ResolveNamed[string](resolver, "str.foo")
+		require.NoError(t, err)
+		_, err = ResolveNamed[string](resolver, "str.foo")
+		require.NoError(t, err)
+		resolveNamed, err := ResolveNamed[string](resolver, "str.foo")
+
+		// THEN
+		assert.Equal(t, "hello world", resolveNamed)
+		// only one build, all other calls should use the built provider
+		assert.Equal(t, int32(1), dynamicProvider.buildCount.Load())
+	})
+
+	t.Run("it should allow to get all from type", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		dynamicProvider := &SomeDynamicProvider{
+			known: map[string]string{
+				"str.foo": "hello world",
+				"str.bar": "waldo",
+			},
+		}
+		resolver.MustRegister(dynamicProvider)
+
+		// WHEN
+		allStr, err := ResolveAll[string](resolver)
+		require.NoError(t, err)
+
+		// THEN
+		assert.GreaterOrEqual(t, len(allStr), 2)
+		assert.Contains(t, allStr, "hello world")
+		assert.Contains(t, allStr, "waldo")
+	})
+
+	t.Run("it should not produce new types or call build if called multiple times", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		dynamicProvider := &SomeDynamicProvider{
+			known: map[string]string{
+				"str.foo": "hello world",
+				"str.bar": "waldo",
+			},
+		}
+		resolver.MustRegister(dynamicProvider)
+
+		// WHEN
+		allStr, err := ResolveAll[string](resolver)
+		require.NoError(t, err)
+		originalLength := len(allStr)
+
+		_, err = ResolveAll[string](resolver)
+		require.NoError(t, err)
+		allStr, err = ResolveAll[string](resolver)
+		require.NoError(t, err)
+
+		// THEN
+		assert.Equal(t, originalLength, len(allStr))
+		// only one build per buildable names (i.e. 2), all other calls should use the built provider
+		assert.Equal(t, int32(2), dynamicProvider.buildCount.Load())
 	})
 }
