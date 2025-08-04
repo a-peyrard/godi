@@ -17,6 +17,15 @@ func NewWithValues[T comparable](values ...T) Set[T] {
 	return s
 }
 
+// NewFromSlice creates a new set from the given slice
+func NewFromSlice[T comparable](slice []T) Set[T] {
+	var s Set[T] = make(map[T]struct{}, len(slice))
+	for _, elem := range slice {
+		s.Add(elem)
+	}
+	return s
+}
+
 // Add adds a value to the set
 func (s Set[T]) Add(value T) {
 	s[value] = struct{}{}

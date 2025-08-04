@@ -47,6 +47,11 @@ func toProviderForTemplate(p ProviderDefinition, importWithAlias map[string]stri
 	if p.Priority != 0 {
 		options = append(options, fmt.Sprintf("godi.Priority(%d)", p.Priority))
 	}
+	if p.Conditions != nil && len(p.Conditions) > 0 {
+		for _, condition := range p.Conditions {
+			options = append(options, whenAnnotationToOption(condition))
+		}
+	}
 
 	var dependencies []string
 	for _, dep := range p.Dependencies {
@@ -69,6 +74,20 @@ func toProviderForTemplate(p ProviderDefinition, importWithAlias map[string]stri
 		FnName:  generateFQN(p.ImportPath, p.FnName, importWithAlias),
 		Options: options,
 	}
+}
+
+func whenAnnotationToOption(condition WhenAnnotation) string {
+	return fmt.Sprintf("godi.When(\"%s\").%s(\"%s\")", condition.named, toOperator(condition.operator), condition.value)
+}
+
+func toOperator(operator string) any {
+	switch operator {
+	case "equals":
+		return "Equals"
+	case "not_equals":
+		return "NotEquals"
+	}
+	return fmt.Sprintf("UnknownOperator(%q)", operator)
 }
 
 func appendDependenciesToOptions(options []string, dependencies []string) []string {
@@ -132,6 +151,7 @@ func generateCode(outputPath string, registryDef *RegistryDefinition, providers 
 			}
 		}
 	}
+	imports = set.NewFromSlice(imports).ToSlice()
 	stdslices.Sort(imports)
 
 	importWithAlias := map[string]string{}

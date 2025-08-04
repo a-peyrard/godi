@@ -18,6 +18,12 @@ func (Registry) Register(resolver *godi.Resolver) {
 		),
 	)
 	resolver.MustRegister(
+		hello.OnlyDevRunner,
+		godi.Named("hello.runner"),
+		godi.Priority(100),
+		godi.When("APP_ENV").Equals("dev"),
+	)
+	resolver.MustRegister(
 		godi.ToStaticProvider("PG"),
 		godi.Named("EnvPrefix4Config"),
 	)

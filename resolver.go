@@ -59,6 +59,7 @@ type (
 		named        string
 		priority     int
 		dependencies []dependency
+		conditions   []condition
 	}
 )
 
@@ -102,8 +103,7 @@ func New() *Resolver {
 func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOptions]) error {
 	t := reflect.TypeOf(provider)
 	if t.Kind() == reflect.Func {
-		_, err := r.registerProviderFn(t, provider, opts...)
-		return err
+		return r.registerProviderFn(t, provider, opts...)
 	} else if t.Implements(DynamicProviderType) {
 		return r.registerDynamicProvider(t, provider, opts...)
 	}
@@ -111,13 +111,13 @@ func (r *Resolver) Register(provider Provider, opts ...option.Option[RegisterOpt
 	return errors.New("provider must be either a function or a DynamicProvider implementation")
 }
 
-func (r *Resolver) registerProviderFn(t reflect.Type, provider Provider, opts ...option.Option[RegisterOptions]) (*providerDef, error) {
+func (r *Resolver) registerProviderFn(t reflect.Type, provider Provider, opts ...option.Option[RegisterOptions]) error {
 	if t.NumOut() != 1 && t.NumOut() != 2 {
-		return nil, errors.New("provider must either return the instance and an error, or just the instance")
+		return errors.New("provider must either return the instance and an error, or just the instance")
 	}
 	if t.NumOut() == 2 {
 		if t.Out(1) != ErrorType {
-			return nil, errors.New("if provider returns two elements, it must return an error as the second element")
+			return errors.New("if provider returns two elements, it must return an error as the second element")
 		}
 	}
 
@@ -143,7 +143,14 @@ func (r *Resolver) registerProviderFn(t reflect.Type, provider Provider, opts ..
 		}
 		paramQueries[i], err = depDef.build(paramTyp)
 		if err != nil {
-			return nil, fmt.Errorf("failed to build dependency for parameter %d of provider %s:\n\t%w", i, funcName, err)
+			return fmt.Errorf("failed to build dependency for parameter %d of provider %s:\n\t%w", i, funcName, err)
+		}
+	}
+
+	// validate the conditions if any
+	for _, cond := range options.conditions {
+		if !r.validateCondition(cond) {
+			return nil
 		}
 	}
 
@@ -159,17 +166,34 @@ func (r *Resolver) registerProviderFn(t reflect.Type, provider Provider, opts ..
 		r.providers[name] = providers
 	}
 
-	providerDef := &providerDef{
+	r.providers[name].Push(&providerDef{
 		name: name,
 
 		factory:      reflect.ValueOf(provider),
 		dependencies: paramQueries,
 
 		priority: options.priority,
-	}
-	r.providers[name].Push(providerDef)
+	})
 
-	return providerDef, nil
+	return nil
+}
+
+func (r *Resolver) validateCondition(cond condition) bool {
+	val, found, err := r.resolve(request{
+		unitaryTyp: StringType,
+		query: queryByName{
+			name: Name{
+				name: cond.namedStringComponent,
+				typ:  StringType,
+			},
+		},
+		collector: collectorUniqueOptional{},
+	})
+	if err != nil || !found {
+		return false
+	}
+
+	return cond.operator(val.String(), cond.value)
 }
 
 func (r *Resolver) registerDynamicProvider(_ reflect.Type, provider Provider, _ ...option.Option[RegisterOptions]) error {

@@ -16,6 +16,7 @@ import (
 
 const (
 	providerAnnotationTag = "@provider"
+	whenAnnotationTag     = "@when"
 	injectAnnotationTag   = "@inject"
 	configAnnotationTag   = "@config"
 )
@@ -30,6 +31,8 @@ type (
 
 		Dependencies []InjectAnnotation
 		Priority     int
+
+		Conditions []WhenAnnotation
 	}
 
 	ConfigDefinition struct {
@@ -224,6 +227,7 @@ func main() {
 							Named:        named,
 							Priority:     priority,
 							Dependencies: dependencies,
+							Conditions:   providerAnnotation.conditions,
 						})
 					}
 				} else if genDecl, ok := n.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {

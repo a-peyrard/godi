@@ -9,11 +9,22 @@ import (
 	"strings"
 )
 
-type ProviderAnnotation struct {
-	logger      *zerolog.Logger
-	description string
-	properties  map[string]string
-}
+type (
+	ProviderAnnotation struct {
+		logger      *zerolog.Logger
+		description string
+		properties  map[string]string
+
+		conditions []WhenAnnotation
+	}
+
+	WhenAnnotation struct {
+		logger   *zerolog.Logger
+		named    string
+		operator string
+		value    string
+	}
+)
 
 func (p ProviderAnnotation) Priority() (priority int, found bool) {
 	if priorityStr, exists := p.properties["priority"]; exists {
@@ -48,13 +59,16 @@ func parseProviderAnnotation(logger *zerolog.Logger, docText string) ProviderAnn
 
 	var descriptionLines []string
 	var providerLine string
+	var conditionLines []string
 
-	// separate @provider line from description
+	// separate @provider line, and @when lines from description
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
 		if strings.HasPrefix(line, providerAnnotationTag) {
 			providerLine = line
+		} else if strings.HasPrefix(line, whenAnnotationTag) {
+			conditionLines = append(conditionLines, line)
 		} else if line != "" && !strings.HasPrefix(line, "@") {
 			descriptionLines = append(descriptionLines, line)
 		}
@@ -64,6 +78,7 @@ func parseProviderAnnotation(logger *zerolog.Logger, docText string) ProviderAnn
 		logger:      logger,
 		description: strings.TrimSpace(strings.Join(descriptionLines, "\n")),
 		properties:  parseProperties(providerLine, providerAnnotationTag),
+		conditions:  parseWhenAnnotations(logger, conditionLines),
 	}
 }
 
@@ -176,4 +191,62 @@ func parseConfigAnnotation(logger *zerolog.Logger, docText string) ConfigAnnotat
 		logger:     logger,
 		properties: parseProperties(configLine, configAnnotationTag),
 	}
+}
+
+func parseWhenAnnotations(logger *zerolog.Logger, lines []string) []WhenAnnotation {
+	if len(lines) == 0 {
+		return nil
+	}
+	conditions := make([]WhenAnnotation, 0, len(lines))
+	for _, line := range lines {
+		annotation, err := parseWhenAnnotation(logger, line)
+		if err != nil {
+			logger.Warn().Err(err).Msgf("Failed to parse @when annotation: %s", line)
+			continue
+		}
+		conditions = append(conditions, annotation)
+	}
+
+	return conditions
+}
+
+func parseWhenAnnotation(logger *zerolog.Logger, line string) (WhenAnnotation, error) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, whenAnnotationTag) {
+		return WhenAnnotation{}, fmt.Errorf("line does not start with %s: %s", whenAnnotationTag, line)
+	}
+
+	content := strings.TrimPrefix(line, whenAnnotationTag)
+	content = strings.TrimSpace(content)
+
+	if content == "" {
+		return WhenAnnotation{}, fmt.Errorf("empty @when annotation")
+	}
+
+	properties := parseProperties(content, whenAnnotationTag)
+	named, found := properties["named"]
+	if !found {
+		return WhenAnnotation{}, fmt.Errorf("missing 'named' property in @when annotation: %s", line)
+	}
+	valueEq, equalsFound := properties["equals"]
+	valueNotEq, notEqualsFound := properties["not_equals"]
+	if !equalsFound && !notEqualsFound {
+		return WhenAnnotation{}, fmt.Errorf("missing 'equals' or 'not_equals' property in @when annotation: %s", line)
+	}
+
+	operator := "equals"
+	if notEqualsFound {
+		operator = "not_equals"
+	}
+	value := strings.TrimSpace(valueEq)
+	if notEqualsFound {
+		value = strings.TrimSpace(valueNotEq)
+	}
+
+	return WhenAnnotation{
+		logger:   logger,
+		named:    named,
+		operator: operator,
+		value:    value,
+	}, nil
 }

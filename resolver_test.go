@@ -910,6 +910,70 @@ func TestResolver_Register(t *testing.T) {
 		assert.NotNil(t, service)
 		assert.Equal(t, "hello world", service.Name)
 	})
+
+	t.Run("it should allow conditional providers, and register if condition is met", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(
+			func() string {
+				return "My App [PROD MODE]"
+			},
+			Named("short_description"),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "dev"
+			},
+			Named("APP_ENV"),
+		)
+
+		// WHEN
+		resolver.MustRegister(
+			func() string {
+				return "My App [DEV MODE]"
+			},
+			Named("short_description"),
+			Priority(100),
+			When("APP_ENV").Equals("dev"),
+		)
+
+		// THEN
+		val, err := ResolveNamed[string](resolver, "short_description")
+		require.NoError(t, err)
+		assert.Equal(t, "My App [DEV MODE]", val)
+	})
+
+	t.Run("it should allow conditional providers, and not register if condition is not met", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(
+			func() string {
+				return "My App [PROD MODE]"
+			},
+			Named("short_description"),
+		)
+		resolver.MustRegister(
+			func() string {
+				return "production"
+			},
+			Named("APP_ENV"),
+		)
+
+		// WHEN
+		resolver.MustRegister(
+			func() string {
+				return "My App [DEV MODE]"
+			},
+			Named("short_description"),
+			Priority(100),
+			When("APP_ENV").NotEquals("production"),
+		)
+
+		// THEN
+		val, err := ResolveNamed[string](resolver, "short_description")
+		require.NoError(t, err)
+		assert.Equal(t, "My App [PROD MODE]", val)
+	})
 }
 
 func TestResolver_MustRegister(t *testing.T) {

@@ -21,11 +21,19 @@ func NewHelloRunner(
 	})
 }
 
+// OnlyDevRunner creates a new Runnable that prints "Hello world".
+//
+// @provider named="hello.runner" priority=100
+// @when named="APP_ENV" equals="dev"
+func OnlyDevRunner() runner.Runnable {
+	return runner.RunnableFunc(DevRunner)
+}
+
 //// NewDecorateHelloRunner creates a new Runnable that prints "Hello world" and sleeps for a specified duration.
 ////
 //// @provider named="hello.runner" priority=100
 //func NewDecorateHelloRunner(
-//		  helloRunnable di.Runnable, // @inject named="hello.foobar"
+//		  helloRunnable runner.Runnable, // @inject named="hello.foobar"
 //        waldo string,
 //        foo dispatcher.Dispatcher, // @inject named="myDispatcher"
 //) runner.Runnable {
@@ -56,6 +64,12 @@ func HelloRunner(ctx context.Context, fooBar string) error {
 	}
 	fmt.Print("\n")
 	log.Println("Done sleeping, exiting now.")
+
+	return nil
+}
+
+func DevRunner(ctx context.Context) error {
+	log.Println("Hello DEV world!")
 
 	return nil
 }
