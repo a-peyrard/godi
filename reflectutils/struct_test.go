@@ -56,7 +56,7 @@ func TestWalkStruct(t *testing.T) {
 	t.Run("it should apply consumer on all fields", func(t *testing.T) {
 		// GIVEN
 		// create a consumer calling the apply default method if the struct is implementing WithDefault
-		consumer := func(val reflect.Value, typ reflect.Type) {
+		consumer := func(val reflect.Value, typ reflect.Type, path []string) {
 			withDefaultValueType := reflect.TypeOf((*WithDefault)(nil)).Elem()
 			if typ.Implements(withDefaultValueType) {
 				if val.IsValid() {
@@ -130,7 +130,7 @@ func TestWalkStruct(t *testing.T) {
 		// GIVEN
 		// create a consumer calling the apply default method if the struct is implementing WithDefault
 		withDefaultValueType := reflect.TypeOf((*WithDefault)(nil)).Elem()
-		callApplyDefault := func(val reflect.Value, typ reflect.Type) {
+		callApplyDefault := func(val reflect.Value, typ reflect.Type, path []string) {
 			if typ.Implements(withDefaultValueType) {
 				if val.IsValid() {
 					val.Interface().(WithDefault).ApplyDefault()
@@ -140,7 +140,7 @@ func TestWalkStruct(t *testing.T) {
 
 		// WHEN
 		element := &TestConfig{}
-		WalkStruct(element, fn.AllBiConsumer(CreateNilStructs, callApplyDefault))
+		WalkStruct(element, fn.AllTriConsumer(CreateNilStructs, callApplyDefault))
 
 		// THEN
 		assert.Equal(t, "hello world", element.SomeValue)
@@ -161,7 +161,7 @@ func TestWalkStruct(t *testing.T) {
 			Foo *Foo
 		}
 
-		nilFoo := func(val reflect.Value, typ reflect.Type) {
+		nilFoo := func(val reflect.Value, typ reflect.Type, path []string) {
 			if strings.Contains(typ.String(), "Foo") {
 				val.Set(reflect.Zero(typ))
 			}
@@ -187,5 +187,26 @@ func TestWalkStruct(t *testing.T) {
 		// THEN
 		require.NotNil(t, element.SomeValue)
 		assert.Equal(t, []string{}, element.SomeValue)
+	})
+
+	t.Run("it should provide field path information", func(t *testing.T) {
+		// GIVEN
+		var capturedPaths []string
+		pathCapture := func(val reflect.Value, typ reflect.Type, path []string) {
+			if len(path) > 0 {
+				capturedPaths = append(capturedPaths, strings.Join(path, "."))
+			}
+		}
+
+		// WHEN
+		element := &TestConfig{
+			Foo: &FooTestConfig{},
+			Bar: &BarTestConfig{},
+		}
+		WalkStruct(element, pathCapture)
+
+		// THEN
+		expectedPaths := []string{"Foo", "Foo.Hello", "Foo.World", "Bar", "Bar.First", "Bar.Second", "SomeValue"}
+		assert.ElementsMatch(t, expectedPaths, capturedPaths)
 	})
 }

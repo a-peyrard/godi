@@ -30,3 +30,15 @@ func AllBiConsumer[A any, B any](consumers ...BiConsumer[A, B]) BiConsumer[A, B]
 		}
 	}
 }
+
+// TriConsumer represents a function that accepts three input arguments and returns no result.
+type TriConsumer[T1 any, T2 any, T3 any] func(t1 T1, t2 T2, t3 T3)
+
+// AllTriConsumer creates a tri-consumer that will execute all the given tri-consumers.
+func AllTriConsumer[A any, B any, C any](consumers ...TriConsumer[A, B, C]) TriConsumer[A, B, C] {
+	return func(a A, b B, c C) {
+		for _, consumer := range consumers {
+			consumer(a, b, c)
+		}
+	}
+}

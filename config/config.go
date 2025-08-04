@@ -49,7 +49,7 @@ func Load[T any](opts ...option.Option[Options]) (*T, error) {
 	}
 
 	withDefaultValueType := reflect.TypeOf((*WithDefault)(nil)).Elem()
-	callApplyDefault := func(val reflect.Value, typ reflect.Type) {
+	callApplyDefault := func(val reflect.Value, typ reflect.Type, _ []string) {
 		if typ.Implements(withDefaultValueType) {
 			if val.IsValid() {
 				val.Interface().(WithDefault).ApplyDefault()
@@ -58,7 +58,7 @@ func Load[T any](opts ...option.Option[Options]) (*T, error) {
 	}
 	reflectutils.WalkStruct(
 		&vT,
-		fn.AllBiConsumer(
+		fn.AllTriConsumer(
 			reflectutils.CreateNilStructs,
 			callApplyDefault,
 		),

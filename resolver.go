@@ -116,7 +116,7 @@ func (r *Resolver) registerProviderFn(t reflect.Type, provider Provider, opts ..
 		return nil, errors.New("provider must either return the instance and an error, or just the instance")
 	}
 	if t.NumOut() == 2 {
-		if t.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
+		if t.Out(1) != ErrorType {
 			return nil, errors.New("if provider returns two elements, it must return an error as the second element")
 		}
 	}

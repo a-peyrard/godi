@@ -6,17 +6,17 @@ import (
 )
 
 // WalkStruct applies a bi-consumer on all fields and nested fields of a given object.
-func WalkStruct[T any](element T, consumer fn.BiConsumer[reflect.Value, reflect.Type]) {
-	walkStructInternal(reflect.ValueOf(element), consumer)
+func WalkStruct[T any](element T, consumer fn.TriConsumer[reflect.Value, reflect.Type, []string]) {
+	walkStructInternal(reflect.ValueOf(element), []string{}, consumer)
 }
 
-func walkStructInternal(val reflect.Value, consumer fn.BiConsumer[reflect.Value, reflect.Type]) {
+func walkStructInternal(val reflect.Value, path []string, consumer fn.TriConsumer[reflect.Value, reflect.Type, []string]) {
 	var (
 		nestedVal   reflect.Value
 		structField reflect.StructField
 	)
 	// apply the consumer
-	consumer(val, val.Type())
+	consumer(val, val.Type(), path)
 
 	// dereference the value
 	val = Deref(val)
@@ -35,7 +35,7 @@ func walkStructInternal(val reflect.Value, consumer fn.BiConsumer[reflect.Value,
 			}
 			nestedVal = val.Field(i)
 
-			walkStructInternal(nestedVal, consumer)
+			walkStructInternal(nestedVal, append(path, structField.Name), consumer)
 		}
 	}
 }
@@ -49,7 +49,7 @@ func Deref(value reflect.Value) reflect.Value {
 }
 
 // CreateNilStructs creates new struct instances for nil struct pointers
-func CreateNilStructs(val reflect.Value, typ reflect.Type) {
+func CreateNilStructs(val reflect.Value, typ reflect.Type, _ []string) {
 	if typ.Kind() == reflect.Pointer &&
 		val.IsNil() &&
 		typ.Elem().Kind() == reflect.Struct {
@@ -58,7 +58,7 @@ func CreateNilStructs(val reflect.Value, typ reflect.Type) {
 	}
 }
 
-func CreateEmptyArrays(val reflect.Value, typ reflect.Type) {
+func CreateEmptyArrays(val reflect.Value, typ reflect.Type, _ []string) {
 	if typ.Kind() == reflect.Slice && val.IsNil() {
 		val.Set(reflect.MakeSlice(typ, 0, 0))
 	}
