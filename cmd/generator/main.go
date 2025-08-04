@@ -35,7 +35,6 @@ type (
 	ConfigDefinition struct {
 		TypeName   string
 		ImportPath string
-		Fields     []FieldAnalysis
 		Annotation ConfigAnnotation
 	}
 
@@ -65,17 +64,9 @@ Dependencies: [%s]`,
 func (c ConfigDefinition) String() string {
 	return fmt.Sprintf(
 		`📦 Config: %s
-Import Path: %s
-Fields: [%s]`,
+Import Path: %s`,
 		c.TypeName,
 		c.ImportPath,
-		strings.Join(slices.Map(c.Fields, func(f FieldAnalysis) string {
-			typeName := f.TypeName
-			if f.ImportPath != "" {
-				typeName = f.ImportPath + "." + typeName
-			}
-			return fmt.Sprintf("%s (%s)", f.Path, typeName)
-		}), ", "),
 	)
 }
 
@@ -239,7 +230,7 @@ func main() {
 					// look for structs annotated with @config
 					for _, spec := range genDecl.Specs {
 						if typeSpec, ok := spec.(*ast.TypeSpec); ok {
-							if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+							if _, ok := typeSpec.Type.(*ast.StructType); ok {
 								if genDecl.Doc != nil && strings.Contains(genDecl.Doc.Text(), configAnnotationTag) {
 									logger := logger.With().Str("struct", typeSpec.Name.Name).Logger()
 
@@ -250,7 +241,6 @@ func main() {
 										ConfigDefinition{
 											TypeName:   typeSpec.Name.Name,
 											ImportPath: importPath,
-											Fields:     analyzeConfigStruct(pkg, structType),
 											Annotation: parseConfigAnnotation(&logger, genDecl.Doc.Text()),
 										},
 									)

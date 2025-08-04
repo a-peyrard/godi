@@ -30,32 +30,5 @@ func (Registry) Register(resolver *godi.Resolver) {
 			godi.Inject.Named("EnvPrefix4Config"),
 		),
 	)
-	resolver.MustRegister(
-		godi.ProvidesConfig[*aconfig.Config, string]("Environment"),
-		godi.Named("Config.Environment"),
-		godi.Dependencies(
-			godi.Inject.Named("Config"),
-		),
-	)
-	resolver.MustRegister(
-		godi.ProvidesConfig[*aconfig.Config, string]("EnvPrefixSeparator"),
-		godi.Named("Config.EnvPrefixSeparator"),
-		godi.Dependencies(
-			godi.Inject.Named("Config"),
-		),
-	)
-	resolver.MustRegister(
-		godi.ProvidesConfig[*aconfig.Config, *aconfig.FoobarConfig]("Foobar"),
-		godi.Named("Config.Foobar"),
-		godi.Dependencies(
-			godi.Inject.Named("Config"),
-		),
-	)
-	resolver.MustRegister(
-		godi.ProvidesConfig[*aconfig.Config, string]("Foobar.Foo"),
-		godi.Named("Config.Foobar.Foo"),
-		godi.Dependencies(
-			godi.Inject.Named("Config"),
-		),
-	)
+	resolver.MustRegister(&godi.ConfigDynamicProvider[aconfig.Config]{})
 }

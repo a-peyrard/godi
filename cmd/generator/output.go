@@ -106,23 +106,13 @@ func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[s
 		Options: options,
 	})
 
-	// finally, we will explode the config struct into individual providers
-	for _, field := range config.Fields {
-		fieldFQN := generateFQN(field.ImportPath, field.TypeName, importWithAlias)
-		options := []string{
-			fmt.Sprintf("godi.Named(\"%s.%s\")", config.TypeName, field.Path),
-		}
-		options = appendDependenciesToOptions(options, []string{
-			fmt.Sprintf("godi.Inject.Named(\"%s\")", config.TypeName),
-		})
-		providers = append(
-			providers,
-			ProviderForTemplate{
-				FnName:  fmt.Sprintf("godi.ProvidesConfig[*%s, %s](\"%s\")", configStructFQN, fieldFQN, field.Path),
-				Options: options,
-			},
-		)
-	}
+	// finally, we will add a dynamic provider which will allow to resolve the config fields
+	providers = append(
+		providers,
+		ProviderForTemplate{
+			FnName: fmt.Sprintf("&godi.ConfigDynamicProvider[%s]{}", configStructFQN),
+		},
+	)
 
 	return providers
 }
