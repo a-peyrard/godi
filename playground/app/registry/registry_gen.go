@@ -36,5 +36,5 @@ func (Registry) Register(resolver *godi.Resolver) {
 			godi.Inject.Named("EnvPrefix4Config"),
 		),
 	)
-	resolver.MustRegister(&godi.ConfigDynamicProvider[aconfig.Config]{})
+	resolver.MustRegister(&godi.ConfigFieldProvider[aconfig.Config]{})
 }

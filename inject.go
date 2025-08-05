@@ -10,7 +10,7 @@ var Inject = &injectBuilder{}
 
 type (
 	dependency interface {
-		build(targetTyp reflect.Type) (request, error)
+		build(targetTyp reflect.Type) (Request, error)
 	}
 
 	// entry points for builders
@@ -25,13 +25,14 @@ func (i *injectBuilder) Named(name string) dependency {
 	return namedDependencyBuilder{named: name}
 }
 
-func (n namedDependencyBuilder) build(targetTyp reflect.Type) (request, error) {
-	return request{
+func (n namedDependencyBuilder) build(targetTyp reflect.Type) (Request, error) {
+	return Request{
 		unitaryTyp: targetTyp,
 		query: queryByName{
 			name: Name{name: n.named, typ: targetTyp},
 		},
-		collector: collectorUniqueMandatory{}, // fixme: we should allow optional or mandatory collectors
+		validator: validatorUniqueMandatory{},
+		collector: collectorUnique{},
 	}, nil
 }
 
@@ -41,13 +42,14 @@ func (i *injectBuilder) Auto() dependency {
 	return autoDependencyBuilder{}
 }
 
-func (a autoDependencyBuilder) build(targetTyp reflect.Type) (request, error) {
-	return request{
+func (a autoDependencyBuilder) build(targetTyp reflect.Type) (Request, error) {
+	return Request{
 		unitaryTyp: targetTyp,
 		query: queryByType{
 			typ: targetTyp,
 		},
-		collector: collectorUniqueMandatory{}, // fixme: we should allow optional or mandatory collectors
+		validator: validatorUniqueMandatory{},
+		collector: collectorUnique{},
 	}, nil
 }
 
@@ -57,24 +59,26 @@ func (i *injectBuilder) Multiple() dependency {
 	return multipleDependencyBuilder{}
 }
 
-func (m multipleDependencyBuilder) build(targetTyp reflect.Type) (r request, err error) {
+func (m multipleDependencyBuilder) build(targetTyp reflect.Type) (r Request, err error) {
 	if targetTyp.Kind() == reflect.Slice {
 		elemTyp := targetTyp.Elem()
-		return request{
+		return Request{
 			unitaryTyp: elemTyp,
 			query: queryByType{
 				typ: elemTyp,
 			},
+			validator: validatorMultiple{},
 			collector: collectorMultipleAsSlice{},
 		}, nil
 	}
 	if targetTyp.Kind() == reflect.Map {
 		valueTyp := targetTyp.Elem()
-		return request{
+		return Request{
 			unitaryTyp: valueTyp,
 			query: queryByType{
 				typ: valueTyp,
 			},
+			validator: validatorMultiple{},
 			collector: collectorMultipleAsMap{},
 		}, nil
 	}

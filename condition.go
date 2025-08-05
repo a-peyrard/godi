@@ -34,8 +34,8 @@ func When(namedStringComponent string) ConditionNameBuilder {
 	}
 }
 
-func (cn ConditionNameBuilder) Equals(value string) option.Option[RegisterOptions] {
-	return func(opts *RegisterOptions) {
+func (cn ConditionNameBuilder) Equals(value string) option.Option[RegistrableOptions] {
+	return func(opts *RegistrableOptions) {
 		opts.conditions = append(
 			opts.conditions,
 			condition{
@@ -47,8 +47,8 @@ func (cn ConditionNameBuilder) Equals(value string) option.Option[RegisterOption
 	}
 }
 
-func (cn ConditionNameBuilder) NotEquals(value string) option.Option[RegisterOptions] {
-	return func(opts *RegisterOptions) {
+func (cn ConditionNameBuilder) NotEquals(value string) option.Option[RegistrableOptions] {
+	return func(opts *RegistrableOptions) {
 		opts.conditions = append(
 			opts.conditions,
 			condition{

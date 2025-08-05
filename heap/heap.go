@@ -71,3 +71,8 @@ func (pq *innerPriorityQueue[T]) Pop() any {
 	pq.inner = old[0 : n-1]
 	return item
 }
+
+// ToSlice returns the elements of the priority queue as a slice.
+func (pq innerPriorityQueue[T]) ToSlice() []T {
+	return pq.inner
+}

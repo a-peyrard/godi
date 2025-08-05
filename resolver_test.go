@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/a-peyrard/godi/slices"
-	"github.com/a-peyrard/godi/option"
 	"io"
+	"reflect"
 	"sync/atomic"
 	"testing"
 
@@ -486,7 +486,7 @@ func TestResolver_Register(t *testing.T) {
 
 		// THEN
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "provider must either return the instance and an error")
+		assert.Contains(t, err.Error(), "must either return the instance and an error")
 	})
 
 	t.Run("it should fail if function does not return an error as second element", func(t *testing.T) {
@@ -500,7 +500,7 @@ func TestResolver_Register(t *testing.T) {
 
 		// THEN
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "if provider returns two elements, it must return an error")
+		assert.Contains(t, err.Error(), "returns two elements, it must return an error")
 	})
 
 	t.Run("it should fail if function does return more than two elements", func(t *testing.T) {
@@ -514,7 +514,7 @@ func TestResolver_Register(t *testing.T) {
 
 		// THEN
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "provider must either return the instance and an error")
+		assert.Contains(t, err.Error(), "must either return the instance and an error")
 	})
 
 	t.Run("it should allows to register with custom name", func(t *testing.T) {
@@ -1005,12 +1005,12 @@ func TestResolver_MustRegister(t *testing.T) {
 	})
 }
 
-type SomeDynamicProvider struct {
+type SomeProvider struct {
 	known      map[string]string
 	buildCount atomic.Int32
 }
 
-func (e *SomeDynamicProvider) CanBuild(name Name) bool {
+func (e *SomeProvider) CanProvide(name Name) bool {
 	if name.typ == StringType && name.name != "" {
 		_, found := e.known[name.name]
 		if found {
@@ -1021,12 +1021,24 @@ func (e *SomeDynamicProvider) CanBuild(name Name) bool {
 	return false
 }
 
-func (e *SomeDynamicProvider) BuildProviderFor(name Name) (provider Provider, opts []option.Option[RegisterOptions], err error) {
+func (e *SomeProvider) Provide(n Name, _ []reflect.Value) (comp reflect.Value, err error) {
 	e.buildCount.Add(1)
-	return ToStaticProvider(e.known[name.name]), []option.Option[RegisterOptions]{Named(name.name)}, nil
+	val, found := e.known[n.name]
+	if !found {
+		return reflect.Value{}, fmt.Errorf("unknown name: %s", n.name)
+	}
+	return reflect.ValueOf(val), nil
 }
 
-func (e *SomeDynamicProvider) ListBuildableNames() []Name {
+func (e *SomeProvider) Dependencies() []Request {
+	return nil
+}
+
+func (e *SomeProvider) Priority() int {
+	return 0
+}
+
+func (e *SomeProvider) ListProvidableNames() []Name {
 	names := make([]Name, 0, len(e.known))
 	for key := range e.known {
 		names = append(names, Name{
@@ -1037,11 +1049,11 @@ func (e *SomeDynamicProvider) ListBuildableNames() []Name {
 	return names
 }
 
-func TestResolver_DynamicProvider(t *testing.T) {
+func TestResolver_Provider(t *testing.T) {
 	t.Run("it should register dynamic provider and allow to resolve by name", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
-		dynamicProvider := &SomeDynamicProvider{
+		dynamicProvider := &SomeProvider{
 			known: map[string]string{
 				"str.foo": "hello world",
 				"str.bar": "waldo",
@@ -1061,7 +1073,7 @@ func TestResolver_DynamicProvider(t *testing.T) {
 	t.Run("it should build provider only once", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
-		dynamicProvider := &SomeDynamicProvider{
+		dynamicProvider := &SomeProvider{
 			known: map[string]string{
 				"str.foo": "hello world",
 				"str.bar": "waldo",
@@ -1085,7 +1097,7 @@ func TestResolver_DynamicProvider(t *testing.T) {
 	t.Run("it should allow to get all from type", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
-		dynamicProvider := &SomeDynamicProvider{
+		dynamicProvider := &SomeProvider{
 			known: map[string]string{
 				"str.foo": "hello world",
 				"str.bar": "waldo",
@@ -1106,7 +1118,7 @@ func TestResolver_DynamicProvider(t *testing.T) {
 	t.Run("it should not produce new types or call build if called multiple times", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
-		dynamicProvider := &SomeDynamicProvider{
+		dynamicProvider := &SomeProvider{
 			known: map[string]string{
 				"str.foo": "hello world",
 				"str.bar": "waldo",

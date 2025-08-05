@@ -7,9 +7,15 @@ import (
 
 type (
 	query interface {
-		find(r *Resolver) ([]*providerDef, error)
+		find(r *Resolver) ([]*queryResult, error)
 
 		fmt.Stringer
+	}
+
+	queryResult struct {
+		name      Name
+		component *reflect.Value
+		provider  Provider
 	}
 
 	queryByType struct {
@@ -21,43 +27,28 @@ type (
 	}
 )
 
-func (q queryByType) find(r *Resolver) ([]*providerDef, error) {
-	basket := map[Name]*providerDef{}
-	for name, providers := range r.providers {
-		if matchType(q.typ, name.typ) && providers.IsNotEmpty() {
-			basket[name] = providers.Peek()
-		}
-	}
-
-	// look what we have in stock for dynamic providers
-	registeredNewOnes := false
-	for _, dynamicP := range r.dynamicProviders {
-		for _, n := range dynamicP.ListBuildableNames() {
-			if _, found := basket[n]; !found && matchType(q.typ, n.typ) {
-				provider, opts, err := dynamicP.BuildProviderFor(n)
-				if err != nil {
-					return nil, fmt.Errorf("failed to build provider for %s:\n\t%w", n, err)
+func (q queryByType) find(r *Resolver) ([]*queryResult, error) {
+	// find all the providable names that match the type
+	nameWithProviderMap := make(map[Name]*queryResult)
+	for _, provider := range r.providers.ToSlice() {
+		namesForProvider := provider.ListProvidableNames()
+		for _, n := range namesForProvider {
+			if _, exists := nameWithProviderMap[n]; !exists && matchType(q.typ, n.typ) {
+				var comp *reflect.Value = nil
+				if storedComp, found := r.store.Get(n); found {
+					comp = &storedComp
 				}
-				err = r.Register(provider, opts...)
-				if err != nil {
-					return nil, fmt.Errorf("failed to register built provider for %s:\n\t%w", n, err)
+				nameWithProviderMap[n] = &queryResult{
+					name:      n,
+					component: comp,
+					provider:  provider,
 				}
-				registeredNewOnes = true
 			}
 		}
 	}
 
-	if registeredNewOnes {
-		// Re-query after dynamic providers have been registered.
-		//
-		// We cannot use the registered provider as soon as it is registered, because multiple
-		// providers might have been generated, with different priorities, ... so we need to re-query
-		// what we have in stock.
-		return q.find(r)
-	}
-
-	values := make([]*providerDef, 0, len(basket))
-	for _, v := range basket {
+	values := make([]*queryResult, 0, len(nameWithProviderMap))
+	for _, v := range nameWithProviderMap {
 		values = append(values, v)
 	}
 	return values, nil
@@ -67,65 +58,33 @@ func (q queryByType) String() string {
 	return fmt.Sprintf("<type ~= %s>", q.typ.String())
 }
 
-func (q queryByName) find(r *Resolver) ([]*providerDef, error) {
-	var basket []*providerDef
-	for name, providers := range r.providers {
-		if matchType(q.name.typ, name.typ) && q.name.name == name.name && providers.IsNotEmpty() {
-			basket = append(basket, providers.Peek())
+func (q queryByName) find(r *Resolver) ([]*queryResult, error) {
+	comp, found := r.store.Get(q.name)
+	if found {
+		return []*queryResult{
+			{
+				name:      q.name,
+				component: &comp,
+				provider:  nil,
+			},
+		}, nil
+	}
+
+	for _, provider := range r.providers.ToSlice() {
+		if provider.CanProvide(q.name) {
+			return []*queryResult{
+				{
+					name:      q.name,
+					component: nil,
+					provider:  provider,
+				},
+			}, nil
 		}
 	}
 
-	// look for dynamic providers if we didn't find anything yet
-	if len(basket) == 0 {
-		registeredAtLeastOne := false
-		for _, dynamicP := range r.dynamicProviders {
-			if dynamicP.CanBuild(q.name) {
-				provider, opts, err := dynamicP.BuildProviderFor(q.name)
-				if err != nil {
-					return nil, fmt.Errorf("failed to build provider for %s:\n\t%w", q.name, err)
-				}
-				err = r.Register(provider, opts...)
-				if err != nil {
-					return nil, fmt.Errorf("failed to register built provider for %s:\n\t%w", q.name, err)
-				}
-
-				registeredAtLeastOne = true
-			}
-		}
-
-		if registeredAtLeastOne {
-			// Re-query after dynamic providers have been registered.
-			//
-			// We cannot use the registered provider as soon as it is registered, because multiple
-			// providers might have been generated, with different priorities, ... so we need to re-query
-			// what we have in stock.
-			return q.find(r)
-		}
-	}
-
-	return basket, nil
-}
-
-func (q queryByName) findInProvidersOnly(r *Resolver) []*providerDef {
-	var basket []*providerDef
-	for name, providers := range r.providers {
-		if matchType(q.name.typ, name.typ) && q.name.name == name.name && providers.IsNotEmpty() {
-			basket = append(basket, providers.Peek())
-		}
-	}
-	return basket
+	return []*queryResult{}, nil
 }
 
 func (q queryByName) String() string {
 	return fmt.Sprintf("<type ~= %s and name = %s>", q.name.typ.String(), q.name.name)
-}
-
-func matchType(queryType, providedType reflect.Type) bool {
-	if queryType == providedType {
-		return true
-	}
-	if queryType.Kind() == reflect.Interface && providedType.Implements(queryType) {
-		return true
-	}
-	return false
 }

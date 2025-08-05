@@ -17,7 +17,7 @@ func main() {
 	resolver.MustRegister(func() context.Context {
 		return runner.WithSyscallKillableContext(context.Background())
 	})
-	resolver.MustRegister(&godi.EnvDynamicProvider{})
+	resolver.MustRegister(&godi.EnvProvider{})
 	registry.Registry{}.Register(resolver)
 
 	if err := runner.Run(resolver); err != nil && !errors.Is(err, context.Canceled) {

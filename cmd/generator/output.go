@@ -129,7 +129,7 @@ func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[s
 	providers = append(
 		providers,
 		ProviderForTemplate{
-			FnName: fmt.Sprintf("&godi.ConfigDynamicProvider[%s]{}", configStructFQN),
+			FnName: fmt.Sprintf("&godi.ConfigFieldProvider[%s]{}", configStructFQN),
 		},
 	)
 
