@@ -10,7 +10,7 @@ import (
 
 const sleepDuration = 2 * time.Second
 
-// NewHelloRunner creates a new Runnable that prints "Hello world" and sleeps for a specified duration.
+// NewHelloRunner Creates a new Runnable that prints "Hello world" and sleeps for a specified duration.
 //
 // @provider named="hello.runner"
 func NewHelloRunner(
@@ -36,7 +36,7 @@ func NewHelloRunner(
 //	return "cycle??"
 //}
 
-// OnlyDevRunner creates a new Runnable that prints "Hello world".
+// OnlyDevRunner Creates a new Runnable that prints "Hello world".
 //
 // @provider named="hello.runner" priority=100
 // @when named="APP_ENV" equals="dev"

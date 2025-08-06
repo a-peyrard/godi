@@ -54,13 +54,14 @@ func (p ProviderAnnotation) UnknownProperties() []string {
 	return unknown
 }
 
-func parseProviderAnnotation(logger *zerolog.Logger, docText string) ProviderAnnotation {
+func parseProviderAnnotation(logger *zerolog.Logger, fnName string, docText string) ProviderAnnotation {
 	lines := strings.Split(docText, "\n")
 
-	var descriptionLines []string
-	var providerLine string
-	var conditionLines []string
-
+	var (
+		descriptionLines []string
+		providerLine     string
+		conditionLines   []string
+	)
 	// separate @provider line, and @when lines from description
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -76,7 +77,7 @@ func parseProviderAnnotation(logger *zerolog.Logger, docText string) ProviderAnn
 
 	return ProviderAnnotation{
 		logger:      logger,
-		description: strings.TrimSpace(strings.Join(descriptionLines, "\n")),
+		description: formatDescription(fnName, descriptionLines),
 		properties:  parseProperties(providerLine, providerAnnotationTag),
 		conditions:  parseWhenAnnotations(logger, conditionLines),
 	}
@@ -156,8 +157,9 @@ func parseInjectAnnotation(logger *zerolog.Logger, comment string) InjectAnnotat
 }
 
 type ConfigAnnotation struct {
-	logger     *zerolog.Logger
-	properties map[string]string
+	logger      *zerolog.Logger
+	description string
+	properties  map[string]string
 }
 
 func (a ConfigAnnotation) String() string {
@@ -172,10 +174,23 @@ func (a ConfigAnnotation) Prefix() string {
 	return prefix
 }
 
-func parseConfigAnnotation(logger *zerolog.Logger, docText string) ConfigAnnotation {
+func parseConfigAnnotation(logger *zerolog.Logger, configType string, docText string) ConfigAnnotation {
 	lines := strings.Split(docText, "\n")
 
-	var configLine string
+	var (
+		configLine       string
+		descriptionLines []string
+	)
+	// separate @config line from description
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		if strings.HasPrefix(line, configAnnotationTag) {
+			configLine = line
+		} else if line != "" && !strings.HasPrefix(line, "@") {
+			descriptionLines = append(descriptionLines, line)
+		}
+	}
 
 	// separate @config line from description
 	for _, line := range lines {
@@ -188,8 +203,9 @@ func parseConfigAnnotation(logger *zerolog.Logger, docText string) ConfigAnnotat
 	}
 
 	return ConfigAnnotation{
-		logger:     logger,
-		properties: parseProperties(configLine, configAnnotationTag),
+		logger:      logger,
+		description: formatDescription(configType, descriptionLines),
+		properties:  parseProperties(configLine, configAnnotationTag),
 	}
 }
 
@@ -249,4 +265,13 @@ func parseWhenAnnotation(logger *zerolog.Logger, line string) (WhenAnnotation, e
 		operator: operator,
 		value:    value,
 	}, nil
+}
+
+func formatDescription(typeStr string, descriptionLines []string) string {
+	normalized := strings.TrimSpace(strings.Join(descriptionLines, "\n"))
+	normalized = strings.TrimPrefix(normalized, typeStr)
+	normalized = strings.TrimSpace(normalized)
+	normalized = strings.Replace(normalized, "\"", "\\\"", -1)
+
+	return normalized
 }

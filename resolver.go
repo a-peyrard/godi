@@ -7,6 +7,7 @@ import (
 	"github.com/a-peyrard/godi/heap"
 	"github.com/a-peyrard/godi/option"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -46,6 +47,8 @@ type (
 		priority     int
 		dependencies []dependency
 		conditions   []condition
+
+		description string
 	}
 )
 
@@ -64,6 +67,12 @@ func Priority(priority int) option.Option[RegistrableOptions] {
 func Dependencies(dependencies ...dependency) option.Option[RegistrableOptions] {
 	return func(opts *RegistrableOptions) {
 		opts.dependencies = dependencies
+	}
+}
+
+func Description(description string) option.Option[RegistrableOptions] {
+	return func(opts *RegistrableOptions) {
+		opts.description = description
 	}
 }
 
@@ -293,4 +302,36 @@ func unReflect[T any](v reflect.Value) (res T, err error) {
 		return res, fmt.Errorf("value %v is not of type %T", v, res)
 	}
 	return res, nil
+}
+
+func (r *Resolver) Describe() string {
+	var b strings.Builder
+	b.WriteString("* Providers:\n")
+	for _, p := range r.providers.ToSlice() {
+		providerStr := ""
+		if reflect.TypeOf(p).Implements(StringerType) {
+			providerStr = p.(fmt.Stringer).String()
+		} else {
+			providerStr = fmt.Sprintf("%T", p)
+		}
+
+		b.WriteString(fmt.Sprintf("\t- %s (priority=%d)\n", providerStr, p.Priority()))
+		if desc := p.Description(); desc != "" {
+			b.WriteString(fmt.Sprintf("\t\tdescription: %s\n", desc))
+		}
+		b.WriteString("\t\tprovides:\n")
+		for _, n := range p.ListProvidableNames() {
+			b.WriteString(fmt.Sprintf("\t\t\t- %s\n", n))
+		}
+		b.WriteString("\t\tdependencies:\n")
+		for _, d := range p.Dependencies() {
+			b.WriteString(fmt.Sprintf("\t\t\t- %s\n", d))
+		}
+	}
+	b.WriteString("* Stored components:\n")
+	for _, n := range r.store.ListNames() {
+		comp, _ := r.store.Get(n)
+		b.WriteString(fmt.Sprintf("\t- %s: %v\n", n, comp))
+	}
+	return b.String()
 }

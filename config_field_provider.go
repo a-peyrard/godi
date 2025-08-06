@@ -64,6 +64,11 @@ func (c *ConfigFieldProvider[T]) Priority() int {
 	return 0
 }
 
+func (c *ConfigFieldProvider[T]) Description() string {
+	c.loadNamesIfNeeded()
+	return fmt.Sprintf("Provides config fields for %s", strings.TrimSuffix(c.prefix, "."))
+}
+
 func (c *ConfigFieldProvider[T]) loadNamesIfNeeded() {
 	c.once.Do(func() {
 		c.loadNamesInternal()

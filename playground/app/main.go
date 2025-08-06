@@ -20,9 +20,13 @@ func main() {
 	resolver.MustRegister(&godi.EnvProvider{})
 	registry.Registry{}.Register(resolver)
 
+	log.Printf("\n\nhere is what we have in store before running:\n%s\n", resolver.Describe())
+
 	if err := runner.Run(resolver); err != nil && !errors.Is(err, context.Canceled) {
 		log.Fatalf("Error running app: %v", err)
 	}
+
+	log.Printf("\n\nhere is what we have in store at the end:\n%s\n", resolver.Describe())
 
 	log.Println("bye.")
 }

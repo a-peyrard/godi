@@ -17,6 +17,8 @@ type (
 		dependencies []Request
 
 		priority int
+
+		description string
 	}
 )
 
@@ -71,6 +73,7 @@ func NewFactoryMethodProvider(
 		factory:      reflect.ValueOf(factoryMethod),
 		dependencies: paramQueries,
 		priority:     options.priority,
+		description:  options.description,
 	}, nil
 }
 
@@ -113,4 +116,12 @@ func (f *FactoryMethodProvider) ListProvidableNames() []Name {
 
 func (f *FactoryMethodProvider) Priority() int {
 	return f.priority
+}
+
+func (f *FactoryMethodProvider) Description() string {
+	return f.description
+}
+
+func (f *FactoryMethodProvider) String() string {
+	return fmt.Sprintf("FactoryMethodProvider(%s, %s)", f.name.String(), runtime.FuncForPC(f.factory.Pointer()).Name())
 }

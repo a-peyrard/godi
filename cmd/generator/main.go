@@ -193,7 +193,7 @@ func main() {
 						logger := logger.With().Str("provider", fn.Name.Name).Logger()
 
 						logger.Debug().Msg("=> Found provider")
-						providerAnnotation := parseProviderAnnotation(&logger, fn.Doc.Text())
+						providerAnnotation := parseProviderAnnotation(&logger, fn.Name.Name, fn.Doc.Text())
 
 						var (
 							named    string
@@ -245,7 +245,7 @@ func main() {
 										ConfigDefinition{
 											TypeName:   typeSpec.Name.Name,
 											ImportPath: importPath,
-											Annotation: parseConfigAnnotation(&logger, genDecl.Doc.Text()),
+											Annotation: parseConfigAnnotation(&logger, typeSpec.Name.Name, genDecl.Doc.Text()),
 										},
 									)
 								}

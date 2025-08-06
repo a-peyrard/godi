@@ -52,6 +52,9 @@ func toProviderForTemplate(p ProviderDefinition, importWithAlias map[string]stri
 			options = append(options, whenAnnotationToOption(condition))
 		}
 	}
+	if p.Description != "" {
+		options = append(options, fmt.Sprintf("di.Description(\"%s\")", p.Description))
+	}
 
 	var dependencies []string
 	for _, dep := range p.Dependencies {
@@ -109,17 +112,24 @@ func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[s
 	configStructFQN := generateFQN(config.ImportPath, config.TypeName, importWithAlias)
 
 	providers = append(providers, ProviderForTemplate{
-		FnName:  fmt.Sprintf("godi.ToStaticProvider(\"%s\")", config.Annotation.Prefix()),
-		Options: []string{fmt.Sprintf("godi.Named(\"%s\")", prefixName)},
+		FnName: fmt.Sprintf("godi.ToStaticProvider(\"%s\")", config.Annotation.Prefix()),
+		Options: []string{
+			fmt.Sprintf("godi.Named(\"%s\")", prefixName),
+			"godi.Description(\"Provides configuration prefix, i.e. the env vars prefix\")",
+		},
 	})
 
 	// now we should load the config struct itself, with config.Load which is actually a factory method
 	options := []string{
 		fmt.Sprintf("godi.Named(\"%s\")", config.TypeName),
 	}
+	if config.Annotation.description != "" {
+		options = append(options, fmt.Sprintf("di.Description(\"%s\")", config.Annotation.description))
+	}
 	options = appendDependenciesToOptions(options, []string{
 		fmt.Sprintf("godi.Inject.Named(\"%s\")", prefixName),
 	})
+
 	providers = append(providers, ProviderForTemplate{
 		FnName:  fmt.Sprintf("func(envPrefix string) (*%s, error) {\n\t\t\treturn %s.Load[%s](%s.WithEnvPrefix(envPrefix))\n\t\t}", configStructFQN, configLoaderImportAlias, configStructFQN, configLoaderImportAlias),
 		Options: options,

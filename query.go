@@ -55,7 +55,7 @@ func (q queryByType) find(r *Resolver) ([]*queryResult, error) {
 }
 
 func (q queryByType) String() string {
-	return fmt.Sprintf("<type ~= %s>", q.typ.String())
+	return fmt.Sprintf("<type~=%s>", q.typ.String())
 }
 
 func (q queryByName) find(r *Resolver) ([]*queryResult, error) {
@@ -86,5 +86,5 @@ func (q queryByName) find(r *Resolver) ([]*queryResult, error) {
 }
 
 func (q queryByName) String() string {
-	return fmt.Sprintf("<type ~= %s and name = %s>", q.name.typ.String(), q.name.name)
+	return fmt.Sprintf("<type~=%s & name=%s>", q.name.typ.String(), q.name.name)
 }

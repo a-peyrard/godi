@@ -9,5 +9,6 @@ type (
 		Dependencies() []Request
 		ListProvidableNames() []Name
 		Priority() int
+		Description() string
 	}
 )

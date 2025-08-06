@@ -61,3 +61,7 @@ func (e *EnvProvider) loadNames() {
 		}
 	}
 }
+
+func (e *EnvProvider) Description() string {
+	return "Provides environment variables as string components"
+}

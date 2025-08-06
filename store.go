@@ -46,3 +46,12 @@ func (s *Store) Close() error {
 
 	return errors.Join(closeErrors...)
 }
+
+func (s *Store) ListNames() []Name {
+	names := make([]Name, 0)
+	s.inner.Range(func(name, _ any) bool {
+		names = append(names, name.(Name))
+		return true
+	})
+	return names
+}

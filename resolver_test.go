@@ -1080,8 +1080,12 @@ func (e *SomeProvider) ListProvidableNames() []Name {
 	return names
 }
 
+func (e *SomeProvider) Description() string {
+	return "some test provider"
+}
+
 func TestResolver_Provider(t *testing.T) {
-	t.Run("it should register dynamic provider and allow to resolve by name", func(t *testing.T) {
+	t.Run("it should register provider and allow to resolve by name", func(t *testing.T) {
 		// GIVEN
 		resolver := New()
 		dynamicProvider := &SomeProvider{
