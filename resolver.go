@@ -26,6 +26,7 @@ type (
 		query      query
 		validator  validator
 		collector  collector
+		tracker    *Tracker
 	}
 
 	Resolver struct {
@@ -261,6 +262,10 @@ func (r *Resolver) resolve(req Request) (val reflect.Value, found bool, err erro
 		}()
 	}
 
+	if req.tracker == nil {
+		req.tracker = NewTracker()
+	}
+
 	results, err := req.query.find(r)
 	if err != nil {
 		return reflect.Value{}, false, fmt.Errorf("failed to resolve provider(s) from request %v:\n\t%w", req, err)
@@ -269,7 +274,7 @@ func (r *Resolver) resolve(req Request) (val reflect.Value, found bool, err erro
 	if err != nil {
 		return reflect.Value{}, false, fmt.Errorf("failed to validate results for request %v:\n\t%w", req, err)
 	}
-	return req.collector.collect(req.unitaryTyp, r, results)
+	return req.collector.collect(req.unitaryTyp, r, results, req.tracker)
 }
 
 func compareByPriority(p1, p2 Provider) fn.ComparisonResult {

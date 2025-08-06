@@ -14,10 +14,15 @@ type (
 	}
 )
 
-func (r *Resolver) provideUsing(p Provider, name Name) (reflect.Value, error) {
-	// here we need to compute the dependency graph
+func (r *Resolver) provideUsing(p Provider, name Name, tracker *Tracker) (reflect.Value, error) {
+	err := tracker.Push(name)
+	if err != nil {
+		return reflect.Value{}, fmt.Errorf("dependency cycle detected when trying to provide component %s using provider %s:\n\t%w", name, p, err)
+	}
+
 	dependencies := make([]reflect.Value, len(p.Dependencies()))
 	for idx, depReq := range p.Dependencies() {
+		depReq.tracker = NewTrackerFrom(tracker)
 		val, _, err := r.resolve(depReq)
 		if err != nil {
 			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %v to provide component %s:\n\t%w", depReq, name, err)
@@ -30,10 +35,11 @@ func (r *Resolver) provideUsing(p Provider, name Name) (reflect.Value, error) {
 		return reflect.Value{}, fmt.Errorf("failed to provide component %s using provider %s:\n\t%w", name, p, err)
 	}
 
+	// unstack the current component from the tracker
+	tracker.Pop()
+
 	// store the component in the store for future use
 	r.store.Put(name, comp)
-
-	// fixme: handle cycles!!!
 
 	return comp, nil
 }

@@ -188,10 +188,7 @@ func TestResolver(t *testing.T) {
 		assert.Contains(t, types, "*godi.TestRepository")
 	})
 
-	// fixme: handle circular dependencies gracefully
 	t.Run("it should handle circular dependencies gracefully", func(t *testing.T) {
-		t.Skip() // fixme!
-
 		// GIVEN
 		resolver := New()
 
@@ -212,9 +209,43 @@ func TestResolver(t *testing.T) {
 		_, err := Resolve[*TestService](resolver)
 
 		// THEN
-		require.Error(t, err, "Expected error for circular dependency")
-		// Note: This test might need adjustment based on how you want to handle circular deps
-		// The current implementation might infinite loop or stack overflow
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "dependency cycle detected")
+	})
+
+	t.Run("it should handle graph of dependencies", func(t *testing.T) {
+		// GIVEN
+		//       A
+		//      / \
+		//     B   C
+		//      \ /
+		//       D
+		resolver := New()
+
+		providerA := func(b string, c string) string {
+			return fmt.Sprintf("A depends on B (%s) and C (%s)", b, c)
+		}
+		providerB := func(d string) string {
+			return fmt.Sprintf("B depends on D (%s)", d)
+		}
+		providerC := func(d string) string {
+			return fmt.Sprintf("C depends on D (%s)", d)
+		}
+		providerD := func() string {
+			return "D is independent"
+		}
+
+		resolver.MustRegister(providerA, Named("A"), Dependencies(Inject.Named("B"), Inject.Named("C")))
+		resolver.MustRegister(providerB, Named("B"), Dependencies(Inject.Named("D")))
+		resolver.MustRegister(providerC, Named("C"), Dependencies(Inject.Named("D")))
+		resolver.MustRegister(providerD, Named("D"))
+
+		// WHEN
+		value, err := ResolveNamed[string](resolver, "A")
+
+		// THEN
+		require.NoError(t, err)
+		assert.Equal(t, "A depends on B (B depends on D (D is independent)) and C (C depends on D (D is independent))", value)
 	})
 }
 

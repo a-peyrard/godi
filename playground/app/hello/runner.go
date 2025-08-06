@@ -14,12 +14,27 @@ const sleepDuration = 2 * time.Second
 //
 // @provider named="hello.runner"
 func NewHelloRunner(
-	fooBar string, // @inject named="Config.Foobar.Foo"
+// foo string, // @inject named="hello.foo"
 ) runner.Runnable {
 	return runner.RunnableFunc(func(ctx context.Context) error {
-		return HelloRunner(ctx, fooBar)
+		return HelloRunner(ctx, "foo")
 	})
 }
+
+// just to demonstrate cycle detection
+//// @provider named="hello.foo"
+//func FooString(
+//	bar string, // @inject named="hello.bar"
+//) string {
+//	return "foo"
+//}
+//
+//// @provider named="hello.bar"
+//func BarString(
+//	di.Runnable, // @inject named="hello.runner"
+//) string {
+//	return "cycle??"
+//}
 
 // OnlyDevRunner creates a new Runnable that prints "Hello world".
 //

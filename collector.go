@@ -7,7 +7,7 @@ import (
 
 type (
 	collector interface {
-		collect(unitaryTyp reflect.Type, resolver *Resolver, results []*queryResult) (val reflect.Value, found bool, err error)
+		collect(unitaryTyp reflect.Type, r *Resolver, results []*queryResult, tracker *Tracker) (val reflect.Value, found bool, err error)
 
 		fmt.Stringer
 	}
@@ -19,23 +19,23 @@ type (
 	collectorMultipleAsMap struct{}
 )
 
-func (c collectorUnique) collect(_ reflect.Type, r *Resolver, results []*queryResult) (val reflect.Value, found bool, err error) {
+func (c collectorUnique) collect(_ reflect.Type, r *Resolver, results []*queryResult, tracker *Tracker) (val reflect.Value, found bool, err error) {
 	if len(results) == 0 {
 		return reflect.Value{}, false, nil
 	}
 
-	return extractComponentFromResult(r, results[0])
+	return extractComponentFromResult(r, results[0], tracker)
 }
 
 func (c collectorUnique) String() string {
 	return "<📦 unique>"
 }
 
-func (c collectorMultipleAsSlice) collect(unitaryTyp reflect.Type, r *Resolver, results []*queryResult) (val reflect.Value, found bool, err error) {
+func (c collectorMultipleAsSlice) collect(unitaryTyp reflect.Type, r *Resolver, results []*queryResult, tracker *Tracker) (val reflect.Value, found bool, err error) {
 	length := len(results)
 	slice := reflect.MakeSlice(reflect.SliceOf(unitaryTyp), length, length)
 	for i, result := range results {
-		comp, _, err := extractComponentFromResult(r, result)
+		comp, _, err := extractComponentFromResult(r, result, tracker)
 		if err != nil {
 			return reflect.Value{}, false, err
 		}
@@ -50,10 +50,10 @@ func (c collectorMultipleAsSlice) String() string {
 	return "<📦 multiple as slice>"
 }
 
-func (c collectorMultipleAsMap) collect(unitaryTyp reflect.Type, r *Resolver, results []*queryResult) (val reflect.Value, found bool, err error) {
+func (c collectorMultipleAsMap) collect(unitaryTyp reflect.Type, r *Resolver, results []*queryResult, tracker *Tracker) (val reflect.Value, found bool, err error) {
 	mapValue := reflect.MakeMapWithSize(reflect.MapOf(StringType, unitaryTyp), len(results))
 	for _, result := range results {
-		comp, _, err := extractComponentFromResult(r, result)
+		comp, _, err := extractComponentFromResult(r, result, tracker)
 		if err != nil {
 			return reflect.Value{}, false, err
 		}
@@ -68,11 +68,11 @@ func (c collectorMultipleAsMap) String() string {
 	return "<📦 multiple as map>"
 }
 
-func extractComponentFromResult(r *Resolver, result *queryResult) (comp reflect.Value, found bool, err error) {
+func extractComponentFromResult(r *Resolver, result *queryResult, tracker *Tracker) (comp reflect.Value, found bool, err error) {
 	if result.component != nil {
 		comp = *result.component
 	} else {
-		comp, err = r.provideUsing(result.provider, result.name)
+		comp, err = r.provideUsing(result.provider, result.name, tracker)
 		if err != nil {
 			return reflect.Value{}, false, fmt.Errorf("failed to provide using %s:\n\t%w", result.provider, err)
 		}
