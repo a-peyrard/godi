@@ -6,11 +6,15 @@ import (
 	"github.com/a-peyrard/godi/slices"
 	"io"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"strconv"
 )
 
 var closeCounter atomic.Int32
@@ -1175,5 +1179,99 @@ func TestResolver_Provider(t *testing.T) {
 		assert.Equal(t, originalLength, len(allStr))
 		// only one build per buildable names (i.e. 2), all other calls should use the built provider
 		assert.Equal(t, int32(2), dynamicProvider.buildCount.Load())
+	})
+}
+
+func TestResolver_ThreadSafe(t *testing.T) {
+	t.Run("it should allow concurrent resolutions", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+
+		var syncStart sync.WaitGroup
+		syncStart.Add(1)
+		var syncEnd sync.WaitGroup
+		syncEnd.Add(2)
+
+		buildIndex := atomic.Int32{}
+		provider := func() string {
+			syncStart.Wait()
+			val := buildIndex.Add(1)
+			return fmt.Sprintf("service-%d", val)
+		}
+		resolver.MustRegister(provider, Named("myService"))
+
+		// WHEN
+		result := make([]string, 2)
+		go func() {
+			defer syncEnd.Done()
+			res, err := ResolveNamed[string](resolver, "myService")
+			require.NoError(t, err)
+			result[0] = res
+		}()
+		go func() {
+			defer syncEnd.Done()
+			res, err := ResolveNamed[string](resolver, "myService")
+			require.NoError(t, err)
+			result[1] = res
+		}()
+		time.Sleep(10 * time.Millisecond)
+		syncStart.Done() // let the provider build
+
+		// THEN
+		syncEnd.Wait()
+		assert.Equal(t, "service-1", result[0])
+		assert.Equal(t, "service-1", result[1])
+	})
+
+	t.Run("it should allow concurrent registers and resolutions", func(t *testing.T) {
+		// GIVEN
+		ctx, cancelFunc := context.WithCancel(t.Context())
+
+		resolver := New()
+		namePrefix := "foobar-"
+		target := namePrefix + "5"
+
+		// WHEN
+
+		// one goroutine continuously registering new providers till context is done
+		go func() {
+			idx := 1
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(2 * time.Millisecond):
+					value := namePrefix + strconv.Itoa(idx)
+					resolver.MustRegister(ToStaticProvider(value), Named(value))
+				}
+				idx++
+			}
+		}()
+
+		foundChan := make(chan string)
+		go func() {
+			for {
+				value, found, err := TryResolveNamed[string](resolver, target)
+				if err != nil {
+					cancelFunc()
+					return
+				}
+				if found {
+					foundChan <- value
+					return
+				}
+			}
+		}()
+
+		// THEN
+		var foundValue string
+		select {
+		case foundValue = <-foundChan:
+		case <-time.After(2 * time.Second):
+		}
+
+		cancelFunc() // stop the register goroutine
+
+		assert.Equal(t, target, foundValue)
 	})
 }

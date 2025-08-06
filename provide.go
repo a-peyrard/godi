@@ -20,6 +20,18 @@ func (r *Resolver) provideUsing(p Provider, name Name, tracker *Tracker) (reflec
 		return reflect.Value{}, fmt.Errorf("dependency cycle detected when trying to provide component %s using provider %s:\n\t%w", name, p, err)
 	}
 
+	lock := r.lock.GetLockFor(name)
+	lock.Lock()
+	defer func() {
+		lock.Unlock()
+		r.lock.ReleaseLock(name) // no need to store the lock anymore, we won't build the same component again
+	}()
+
+	// now that we have the lock, check if the component was built while we were waiting
+	if storedComp, found := r.store.Get(name); found {
+		return storedComp, nil
+	}
+
 	dependencies := make([]reflect.Value, len(p.Dependencies()))
 	for idx, depReq := range p.Dependencies() {
 		depReq.tracker = NewTrackerFrom(tracker)

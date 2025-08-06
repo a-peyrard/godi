@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/a-peyrard/godi/fn"
-	"github.com/a-peyrard/godi/heap"
 	"github.com/a-peyrard/godi/option"
 	"reflect"
 	"strings"
@@ -31,8 +30,10 @@ type (
 	}
 
 	Resolver struct {
-		providers *heap.PriorityQueue[Provider]
+		providers *SortedCOWSlice[Provider]
 		store     *Store
+
+		lock *LockManager
 	}
 
 	// Closeable is an interface that can be used to close resources.
@@ -87,8 +88,10 @@ func (r Request) String() string {
 func New() *Resolver {
 
 	r := &Resolver{
-		providers: heap.New[Provider](fn.ReverseComparator(compareByPriority)),
+		providers: NewSortedCOWSlice[Provider](fn.ReverseComparator(compareByPriority)),
 		store:     NewStore(),
+
+		lock: NewLockManager(),
 	}
 
 	// Register itself as a static provider.
@@ -128,7 +131,7 @@ func (r *Resolver) Register(reg Registrable, opts ...option.Option[RegistrableOp
 		}
 	}
 
-	r.providers.Push(provider)
+	r.providers.Add(provider)
 
 	return nil
 }
@@ -251,6 +254,29 @@ func TryResolve[T any](resolver *Resolver) (value T, found bool, err error) {
 	)
 }
 
+// TryResolveNamed attempts to resolve a component of name n from the resolver.
+//
+// It returns the resolved value, a boolean indicating if it was found, and an error if any occurred during resolution.
+func TryResolveNamed[T any](resolver *Resolver, name string) (value T, found bool, err error) {
+	var zero T
+	lookFor := reflect.TypeOf((*T)(nil)).Elem()
+	if lookFor == nil {
+		return zero, false, fmt.Errorf("type %T is not a valid type", zero)
+	}
+
+	return resolveTyped[T](
+		resolver,
+		Request{
+			unitaryTyp: lookFor,
+			query: queryByName{
+				name: Name{name: name, typ: lookFor},
+			},
+			validator: validatorUniqueOptional{},
+			collector: collectorUnique{},
+		},
+	)
+}
+
 func resolveTyped[T any](resolver *Resolver, req Request) (val T, found bool, err error) {
 	resolved, found, err := resolver.resolve(req)
 	if err != nil {
@@ -307,7 +333,7 @@ func unReflect[T any](v reflect.Value) (res T, err error) {
 func (r *Resolver) Describe() string {
 	var b strings.Builder
 	b.WriteString("* Providers:\n")
-	for _, p := range r.providers.ToSlice() {
+	for _, p := range r.providers.All() {
 		providerStr := ""
 		if reflect.TypeOf(p).Implements(StringerType) {
 			providerStr = p.(fmt.Stringer).String()

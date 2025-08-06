@@ -30,7 +30,7 @@ type (
 func (q queryByType) find(r *Resolver) ([]*queryResult, error) {
 	// find all the providable names that match the type
 	nameWithProviderMap := make(map[Name]*queryResult)
-	for _, provider := range r.providers.ToSlice() {
+	for _, provider := range r.providers.All() {
 		namesForProvider := provider.ListProvidableNames()
 		for _, n := range namesForProvider {
 			if _, exists := nameWithProviderMap[n]; !exists && matchType(q.typ, n.typ) {
@@ -70,7 +70,7 @@ func (q queryByName) find(r *Resolver) ([]*queryResult, error) {
 		}, nil
 	}
 
-	for _, provider := range r.providers.ToSlice() {
+	for _, provider := range r.providers.All() {
 		if provider.CanProvide(q.name) {
 			return []*queryResult{
 				{
