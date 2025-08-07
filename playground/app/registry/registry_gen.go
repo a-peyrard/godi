@@ -13,25 +13,26 @@ func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		hello.NewHelloRunner,
 		godi.Named("hello.runner"),
-		godi.Dependencies(
-			godi.Inject.Named("Config.Foobar.Foo"),
-		),
+		godi.Description("Creates a new Runnable that prints \"Hello world\" and sleeps for a specified duration."),
 	)
 	resolver.MustRegister(
 		hello.OnlyDevRunner,
 		godi.Named("hello.runner"),
 		godi.Priority(100),
 		godi.When("APP_ENV").Equals("dev"),
+		godi.Description("Creates a new Runnable that prints \"Hello world\"."),
 	)
 	resolver.MustRegister(
 		godi.ToStaticProvider("PG"),
 		godi.Named("EnvPrefix4Config"),
+		godi.Description("Provides configuration prefix, i.e. the env vars prefix"),
 	)
 	resolver.MustRegister(
 		func(envPrefix string) (*aconfig.Config, error) {
 			return config.Load[aconfig.Config](config.WithEnvPrefix(envPrefix))
 		},
 		godi.Named("Config"),
+		godi.Description("contains the playground configuration."),
 		godi.Dependencies(
 			godi.Inject.Named("EnvPrefix4Config"),
 		),

@@ -3,6 +3,7 @@ package godi
 import (
 	"errors"
 	"fmt"
+	"github.com/a-peyrard/godi/concurrent"
 	"github.com/a-peyrard/godi/slices"
 	"io"
 	"reflect"
@@ -1273,5 +1274,72 @@ func TestResolver_ThreadSafe(t *testing.T) {
 		cancelFunc() // stop the register goroutine
 
 		assert.Equal(t, target, foundValue)
+	})
+}
+
+func TestResolver_Initialize(t *testing.T) {
+	t.Run("it should run initializers", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		slice := concurrent.NewSlice[string]()
+		resolver.MustRegister(func() func() {
+			return func() {
+				slice.Append("init1")
+			}
+		})
+		resolver.MustRegister(func() func() {
+			return func() {
+				slice.Append("init2")
+			}
+		})
+		resolver.MustRegister(func() func() error {
+			return func() error {
+				slice.Append("unsafe init1")
+				return nil
+			}
+		})
+
+		// WHEN
+		err := resolver.Initialize()
+
+		// THEN
+		require.NoError(t, err)
+		values := slice.Get()
+		require.Len(t, values, 3)
+		assert.Contains(t, values, "init1")
+		assert.Contains(t, values, "init2")
+		assert.Contains(t, values, "unsafe init1")
+	})
+
+	t.Run("it should allow to initialize without catching errors", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		slice := concurrent.NewSlice[string]()
+		resolver.MustRegister(func() func() {
+			return func() {
+				slice.Append("init1")
+			}
+		})
+		resolver.MustRegister(func() func() {
+			return func() {
+				slice.Append("init2")
+			}
+		})
+		resolver.MustRegister(func() func() error {
+			return func() error {
+				slice.Append("unsafe init1")
+				return nil
+			}
+		})
+
+		// WHEN
+		resolver.MustInitialize()
+
+		// THEN
+		values := slice.Get()
+		require.Len(t, values, 3)
+		assert.Contains(t, values, "init1")
+		assert.Contains(t, values, "init2")
+		assert.Contains(t, values, "unsafe init1")
 	})
 }

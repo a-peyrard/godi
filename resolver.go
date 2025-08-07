@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/a-peyrard/godi/fn"
 	"github.com/a-peyrard/godi/option"
+	"log"
 	"reflect"
 	"strings"
 	"time"
@@ -51,6 +52,9 @@ type (
 
 		description string
 	}
+
+	UnsafeInitializer = func() error
+	Initializer       = func()
 )
 
 func Named(name string) option.Option[RegistrableOptions] {
@@ -360,4 +364,35 @@ func (r *Resolver) Describe() string {
 		b.WriteString(fmt.Sprintf("\t- %s: %v\n", n, comp))
 	}
 	return b.String()
+}
+
+func (r *Resolver) Initialize() error {
+	// find all initializers
+	initializers, err := ResolveAll[Initializer](r)
+	if err != nil {
+		return fmt.Errorf("failed to resolve initializers:\n\t%w", err)
+	}
+	for _, init := range initializers {
+		init()
+	}
+
+	// now find all unsafe initializers
+	unsafeInitializers, err := ResolveAll[UnsafeInitializer](r)
+	if err != nil {
+		return fmt.Errorf("failed to resolve unsafe initializers:\n\t%w", err)
+	}
+	for _, init := range unsafeInitializers {
+		err := init()
+		if err != nil {
+			return fmt.Errorf("failed to run unsafe initializer:\n\t%w", err)
+		}
+	}
+	return nil
+}
+
+func (r *Resolver) MustInitialize() {
+	err := r.Initialize()
+	if err != nil {
+		log.Fatalf("failed to initialize resolver:\n\t%v", err)
+	}
 }

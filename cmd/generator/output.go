@@ -53,7 +53,7 @@ func toProviderForTemplate(p ProviderDefinition, importWithAlias map[string]stri
 		}
 	}
 	if p.Description != "" {
-		options = append(options, fmt.Sprintf("di.Description(\"%s\")", p.Description))
+		options = append(options, fmt.Sprintf("godi.Description(\"%s\")", p.Description))
 	}
 
 	var dependencies []string
@@ -124,7 +124,7 @@ func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[s
 		fmt.Sprintf("godi.Named(\"%s\")", config.TypeName),
 	}
 	if config.Annotation.description != "" {
-		options = append(options, fmt.Sprintf("di.Description(\"%s\")", config.Annotation.description))
+		options = append(options, fmt.Sprintf("godi.Description(\"%s\")", config.Annotation.description))
 	}
 	options = appendDependenciesToOptions(options, []string{
 		fmt.Sprintf("godi.Inject.Named(\"%s\")", prefixName),
