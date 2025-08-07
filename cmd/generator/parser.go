@@ -143,6 +143,11 @@ func (a InjectAnnotation) Multiple() (multiple bool, found bool) {
 	return multiple, found
 }
 
+func (a InjectAnnotation) Optional() (value bool, found bool) {
+	optionalStr, found := a.properties["optional"]
+	return optionalStr == "true", found
+}
+
 func parseInjectAnnotation(logger *zerolog.Logger, comment string) InjectAnnotation {
 	content := strings.TrimPrefix(comment, "//")
 	content = strings.TrimSpace(content)

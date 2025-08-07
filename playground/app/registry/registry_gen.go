@@ -14,6 +14,9 @@ func (Registry) Register(resolver *godi.Resolver) {
 		hello.NewHelloRunner,
 		godi.Named("hello.runner"),
 		godi.Description("Creates a new Runnable that prints \"Hello world\" and sleeps for a specified duration."),
+		godi.Dependencies(
+			godi.Inject.Named("hello.foo").Optional(),
+		),
 	)
 	resolver.MustRegister(
 		hello.OnlyDevRunner,

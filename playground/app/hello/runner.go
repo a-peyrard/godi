@@ -14,10 +14,10 @@ const sleepDuration = 2 * time.Second
 //
 // @provider named="hello.runner"
 func NewHelloRunner(
-// foo string, // @inject named="hello.foo"
+	foo string, // @inject named="hello.foo" optional=true
 ) runner.Runnable {
 	return runner.RunnableFunc(func(ctx context.Context) error {
-		return HelloRunner(ctx, "foo")
+		return HelloRunner(ctx, foo)
 	})
 }
 

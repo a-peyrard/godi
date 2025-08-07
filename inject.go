@@ -18,37 +18,58 @@ type (
 )
 
 type namedDependencyBuilder struct {
-	named string
+	named    string
+	optional bool
 }
 
-func (i *injectBuilder) Named(name string) dependency {
-	return namedDependencyBuilder{named: name}
+func (i *injectBuilder) Named(name string) *namedDependencyBuilder {
+	return &namedDependencyBuilder{named: name}
 }
 
-func (n namedDependencyBuilder) build(targetTyp reflect.Type) (Request, error) {
+func (n *namedDependencyBuilder) Optional() *namedDependencyBuilder {
+	n.optional = true
+	return n
+}
+
+func (n *namedDependencyBuilder) build(targetTyp reflect.Type) (Request, error) {
+	var validator validator = validatorUniqueMandatory{}
+	if n.optional {
+		validator = validatorUniqueOptional{}
+	}
 	return Request{
 		unitaryTyp: targetTyp,
 		query: queryByName{
 			name: Name{name: n.named, typ: targetTyp},
 		},
-		validator: validatorUniqueMandatory{},
+		validator: validator,
 		collector: collectorUnique{},
 	}, nil
 }
 
-type autoDependencyBuilder struct{}
-
-func (i *injectBuilder) Auto() dependency {
-	return autoDependencyBuilder{}
+type autoDependencyBuilder struct {
+	optional bool
 }
 
-func (a autoDependencyBuilder) build(targetTyp reflect.Type) (Request, error) {
+func (i *injectBuilder) Auto() *autoDependencyBuilder {
+	return &autoDependencyBuilder{}
+}
+
+func (a *autoDependencyBuilder) Optional() *autoDependencyBuilder {
+	a.optional = true
+	return a
+}
+
+func (a *autoDependencyBuilder) build(targetTyp reflect.Type) (Request, error) {
+	var validator validator = validatorUniqueMandatory{}
+	if a.optional {
+		validator = validatorUniqueOptional{}
+	}
 	return Request{
 		unitaryTyp: targetTyp,
 		query: queryByType{
 			typ: targetTyp,
 		},
-		validator: validatorUniqueMandatory{},
+		validator: validator,
 		collector: collectorUnique{},
 	}, nil
 }
@@ -86,5 +107,5 @@ func (m multipleDependencyBuilder) build(targetTyp reflect.Type) (r Request, err
 }
 
 func defaultDependencyBuilder() dependency {
-	return autoDependencyBuilder{}
+	return &autoDependencyBuilder{}
 }

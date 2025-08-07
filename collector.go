@@ -19,9 +19,9 @@ type (
 	collectorMultipleAsMap struct{}
 )
 
-func (c collectorUnique) collect(_ reflect.Type, r *Resolver, results []*queryResult, tracker *Tracker) (val reflect.Value, found bool, err error) {
+func (c collectorUnique) collect(unitaryTyp reflect.Type, r *Resolver, results []*queryResult, tracker *Tracker) (val reflect.Value, found bool, err error) {
 	if len(results) == 0 {
-		return reflect.Value{}, false, nil
+		return reflect.Zero(unitaryTyp), false, nil
 	}
 
 	return extractComponentFromResult(r, results[0], tracker)

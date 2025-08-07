@@ -368,6 +368,34 @@ func TestResolver_TryResolve(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to resolve dependency")
 	})
 
+	t.Run("it should not fail if dependency are missing but flagged as optional", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(
+			func() string {
+				return "bar"
+			},
+			Named("bar"),
+		)
+		resolver.MustRegister(
+			func(foo string, bar string) string {
+				return foo + bar
+			},
+			Named("foobar"),
+			Dependencies(
+				Inject.Named("foo").Optional(),
+				Inject.Named("bar").Optional(),
+			),
+		)
+
+		// WHEN
+		value, err := ResolveNamed[string](resolver, "foobar")
+
+		// THEN
+		require.NoError(t, err)
+		assert.Equal(t, "bar", value)
+	})
+
 	t.Run("it should resolve complex dependencies when all are available", func(t *testing.T) {
 		// GIVEN
 		resolver := New()

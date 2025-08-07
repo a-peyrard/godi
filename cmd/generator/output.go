@@ -64,12 +64,18 @@ func toProviderForTemplate(p ProviderDefinition, importWithAlias map[string]stri
 			continue
 		}
 
+		var dependencyToAdd string
 		named, found := dep.Named()
 		if found {
-			dependencies = append(dependencies, fmt.Sprintf("godi.Inject.Named(\"%s\")", named))
-			continue
+			dependencyToAdd = fmt.Sprintf("godi.Inject.Named(\"%s\")", named)
+		} else {
+			dependencyToAdd = "godi.Inject.Auto()"
 		}
-		dependencies = append(dependencies, "godi.Inject.Auto()")
+		optional, found := dep.Optional()
+		if found && optional {
+			dependencyToAdd += ".Optional()"
+		}
+		dependencies = append(dependencies, dependencyToAdd)
 	}
 	options = appendDependenciesToOptions(options, dependencies)
 
