@@ -1371,3 +1371,19 @@ func TestResolver_Initialize(t *testing.T) {
 		assert.Contains(t, values, "unsafe init1")
 	})
 }
+
+func TestResolver_MustResolve(t *testing.T) {
+	t.Run("it should resolve a component", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		err := resolver.Register(NewTestService)
+		require.NoError(t, err)
+
+		// WHEN
+		service1 := MustResolve[*TestService](resolver)
+		require.NoError(t, err)
+
+		// THEN
+		assert.Equal(t, service1.Name, "test-service")
+	})
+}

@@ -281,6 +281,39 @@ func TryResolveNamed[T any](resolver *Resolver, name string) (value T, found boo
 	)
 }
 
+// MustResolve attempts to resolve a component of type T from the resolver.
+//
+// It panics if the resolution fails.
+func MustResolve[T any](resolver *Resolver) T {
+	res, err := Resolve[T](resolver)
+	if err != nil {
+		log.Fatalf("failed to resolve type %T:\n\t%v", res, err)
+	}
+	return res
+}
+
+// MustResolveNamed attempts to resolve a named component of type T from the resolver.
+//
+// It panics if the resolution fails.
+func MustResolveNamed[T any](resolver *Resolver, name string) T {
+	res, err := ResolveNamed[T](resolver, name)
+	if err != nil {
+		log.Fatalf("failed to resolve named component %s of type %T:\n\t%v", name, res, err)
+	}
+	return res
+}
+
+// MustResolveAll attempts to resolve all components of type T from the resolver.
+//
+// It panics if the resolution fails.
+func MustResolveAll[T any](resolver *Resolver) []T {
+	res, err := ResolveAll[T](resolver)
+	if err != nil {
+		log.Fatalf("failed to resolve all components of type %T:\n\t%v", res, err)
+	}
+	return res
+}
+
 func resolveTyped[T any](resolver *Resolver, req Request) (val T, found bool, err error) {
 	resolved, found, err := resolver.resolve(req)
 	if err != nil {
