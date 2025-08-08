@@ -16,7 +16,13 @@ func (Registry) Register(resolver *godi.Resolver) {
 		godi.Description("Creates a new Runnable that prints \"Hello world\" and sleeps for a specified duration."),
 		godi.Dependencies(
 			godi.Inject.Named("hello.foo").Optional(),
+			godi.Inject.Named("hello.bar").Optional(),
 		),
+	)
+	resolver.MustRegister(
+		hello.NewHelloFooString,
+		godi.Named("hello.foo"),
+		godi.Description("provides a simple string \"hello\"."),
 	)
 	resolver.MustRegister(
 		hello.OnlyDevRunner,
@@ -41,4 +47,12 @@ func (Registry) Register(resolver *godi.Resolver) {
 		),
 	)
 	resolver.MustRegister(&godi.ConfigFieldProvider[aconfig.Config]{})
+	resolver.MustRegister(
+		hello.NewHelloRunnerDecorator,
+		godi.Decorate("hello.runner"),
+		godi.Description("Decorates the hello runner."),
+		godi.Dependencies(
+			godi.Inject.Named("hello.foo").Optional(),
+		),
+	)
 }

@@ -15,15 +15,29 @@ import (
 )
 
 const (
-	providerAnnotationTag = "@provider"
-	whenAnnotationTag     = "@when"
-	injectAnnotationTag   = "@inject"
-	configAnnotationTag   = "@config"
+	providerAnnotationTag  = "@provider"
+	decoratorAnnotationTag = "@decorator"
+	whenAnnotationTag      = "@when"
+	injectAnnotationTag    = "@inject"
+	configAnnotationTag    = "@config"
 )
 
 type (
 	ProviderDefinition struct {
 		Named       string
+		Description string
+
+		FnName     string
+		ImportPath string
+
+		Dependencies []InjectAnnotation
+		Priority     int
+
+		Conditions []WhenAnnotation
+	}
+
+	DecoratorDefinition struct {
+		Decorate    string
 		Description string
 
 		FnName     string
@@ -61,6 +75,23 @@ Dependencies: [%s]`,
 		p.Named,
 		p.Priority,
 		strings.Join(slices.Map(p.Dependencies, InjectAnnotation.String), ", "),
+	)
+}
+
+func (d DecoratorDefinition) String() string {
+	return fmt.Sprintf(
+		`🎨️ Decorator: %s
+Description: %s
+Import Path: %s
+Decorate: %s
+Priority: %d
+Dependencies: [%s]`,
+		d.FnName,
+		d.Description,
+		d.ImportPath,
+		d.Decorate,
+		d.Priority,
+		strings.Join(slices.Map(d.Dependencies, InjectAnnotation.String), ", "),
 	)
 }
 
@@ -129,8 +160,11 @@ func main() {
 	// analyze all the packages in the module
 	// we are looking for multiple things:
 	// - functions annotated with @provider
+	// - functions annotated with @decorator
 	// - a struct that embeds godi.EmptyRegistry
+	// - struct with @config annotation
 	var providerDefinitions []ProviderDefinition
+	var decoratorDefinitions []DecoratorDefinition
 	var configDefinitions []ConfigDefinition
 	var registryDefinition *RegistryDefinition
 
@@ -189,11 +223,11 @@ func main() {
 			// look for @provider functions
 			ast.Inspect(file, func(n ast.Node) bool {
 				if fn, ok := n.(*ast.FuncDecl); ok {
-					if fn.Doc != nil && strings.Contains(fn.Doc.Text(), "@provider") {
+					if fn.Doc != nil && strings.Contains(fn.Doc.Text(), providerAnnotationTag) {
 						logger := logger.With().Str("provider", fn.Name.Name).Logger()
 
 						logger.Debug().Msg("=> Found provider")
-						providerAnnotation := parseProviderAnnotation(&logger, fn.Name.Name, fn.Doc.Text())
+						providerAnnotation := parseProviderDecoratorAnnotation(&logger, fn.Name.Name, fn.Doc.Text(), providerAnnotationTag)
 
 						var (
 							named    string
@@ -208,8 +242,8 @@ func main() {
 
 						dependencies := make([]InjectAnnotation, len(fn.Type.Params.List))
 						if fn.Type.Params != nil {
-							for _, param := range fn.Type.Params.List {
-								for idx, paramName := range param.Names {
+							for idx, param := range fn.Type.Params.List {
+								for _, paramName := range param.Names {
 									loggerParam := logger.With().Str("param", paramName.Name).Logger()
 
 									dependencies[idx] = parseInjectAnnotation(
@@ -228,6 +262,53 @@ func main() {
 							Priority:     priority,
 							Dependencies: dependencies,
 							Conditions:   providerAnnotation.conditions,
+						})
+					} else if fn.Doc != nil && strings.Contains(fn.Doc.Text(), decoratorAnnotationTag) {
+						logger := logger.With().Str("provider", fn.Name.Name).Logger()
+
+						logger.Debug().Msg("=> Found decorator")
+						decoratorAnnotation := parseProviderDecoratorAnnotation(&logger, fn.Name.Name, fn.Doc.Text(), decoratorAnnotationTag)
+
+						var (
+							decorate string
+							priority int
+						)
+						if n, found := decoratorAnnotation.Named(); found {
+							decorate = n
+						} else {
+							logger.Error().Msgf("Decorator %s must have a named property to name the component being decorated", fn.Name.Name)
+							return true
+						}
+						if p, found := decoratorAnnotation.Priority(); found {
+							priority = p
+						}
+
+						dependencies := make([]InjectAnnotation, len(fn.Type.Params.List)-1) // skip the first parameter
+						if fn.Type.Params != nil {
+							for idx, param := range fn.Type.Params.List {
+								for _, paramName := range param.Names {
+									if idx == 0 {
+										// skip the first parameter as it's the component being decorated
+										continue
+									}
+									loggerParam := logger.With().Str("param", paramName.Name).Logger()
+
+									dependencies[idx-1] = parseInjectAnnotation(
+										&loggerParam,
+										findCommentForParam(pkg.Fset, file, param),
+									)
+								}
+							}
+						}
+
+						decoratorDefinitions = append(decoratorDefinitions, DecoratorDefinition{
+							FnName:       fn.Name.Name,
+							Description:  decoratorAnnotation.description,
+							ImportPath:   importPath,
+							Decorate:     decorate,
+							Priority:     priority,
+							Dependencies: dependencies,
+							Conditions:   decoratorAnnotation.conditions,
 						})
 					}
 				} else if genDecl, ok := n.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {
@@ -269,6 +350,9 @@ func main() {
 	logger.Info().Msgf("🎯 %d providers found in the module", len(providerDefinitions))
 	definitionsLogs := slices.Map(providerDefinitions, ProviderDefinition.String)
 	logger.Debug().Msgf("Providers:\n%s", strings.Join(definitionsLogs, "\n----\n"))
+	logger.Info().Msgf("🎯 %d decorators found in the module", len(decoratorDefinitions))
+	decoratorDefinitionsLogs := slices.Map(decoratorDefinitions, DecoratorDefinition.String)
+	logger.Debug().Msgf("Decorators:\n%s", strings.Join(decoratorDefinitionsLogs, "\n----\n"))
 	logger.Info().Msgf("🎯 %d config found in the module", len(configDefinitions))
 	configsLogs := slices.Map(configDefinitions, ConfigDefinition.String)
 	logger.Debug().Msgf("Configs:\n%s", strings.Join(configsLogs, "\n----\n"))
@@ -283,7 +367,7 @@ func main() {
 		outputPath = filepath.Join("/tmp", filepath.Base(outputPath))
 	}
 
-	err = generateCode(outputPath, registryDefinition, providerDefinitions, configDefinitions)
+	err = generateCode(outputPath, registryDefinition, providerDefinitions, decoratorDefinitions, configDefinitions)
 	if err != nil {
 		logger.Error().Err(err).Msgf("Failed to generate code in %s", outputPath)
 		os.Exit(1)

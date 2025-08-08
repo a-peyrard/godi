@@ -5,11 +5,14 @@ import (
 	"reflect"
 )
 
-var StringType = reflect.TypeOf("")
-var ProviderType = reflect.TypeOf((*Provider)(nil)).Elem()
-var ErrorType = reflect.TypeOf((*error)(nil)).Elem()
-var CloseableType = reflect.TypeOf((*Closeable)(nil)).Elem()
-var StringerType = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
+var (
+	StringType    = TypeOf[string]()
+	ProviderType  = TypeOf[Provider]()
+	DecoratorType = TypeOf[Decorator]()
+	ErrorType     = TypeOf[error]()
+	CloseableType = TypeOf[Closeable]()
+	StringerType  = TypeOf[fmt.Stringer]()
+)
 
 func matchType(queryType, providedType reflect.Type) bool {
 	if queryType == providedType {
@@ -19,4 +22,13 @@ func matchType(queryType, providedType reflect.Type) bool {
 		return true
 	}
 	return false
+}
+
+func TypeOf[I any]() reflect.Type {
+	var i I
+	t := reflect.TypeOf(i)
+	if t == nil {
+		t = reflect.TypeOf((*I)(nil)).Elem()
+	}
+	return t
 }

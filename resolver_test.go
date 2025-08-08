@@ -536,7 +536,7 @@ func TestResolver_Register(t *testing.T) {
 
 		// THEN
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "provider must be either a function")
+		assert.Contains(t, err.Error(), "as function or as Provider implementation")
 	})
 
 	t.Run("it should fail if function does not return anything", func(t *testing.T) {
@@ -1385,5 +1385,93 @@ func TestResolver_MustResolve(t *testing.T) {
 
 		// THEN
 		assert.Equal(t, service1.Name, "test-service")
+	})
+}
+
+func TestResolver_Decorator(t *testing.T) {
+	t.Run("it should register a decorator and decorate the component during resolution", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(NewTestService, Named("myService"))
+
+		// WHEN
+		resolver.MustRegister(
+			func(toDecorate *TestService) *TestService {
+				return &TestService{
+					Name:   toDecorate.Name + " (decorated)",
+					closed: toDecorate.closed,
+				}
+			},
+			Decorate("myService"),
+		)
+		service := MustResolve[*TestService](resolver)
+
+		// THEN
+		assert.NotNil(t, service)
+		assert.Equal(t, "test-service (decorated)", service.Name)
+	})
+
+	t.Run("it should register an 'unsafe' decorator and decorate the component during resolution", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(NewTestService, Named("myService"))
+
+		// WHEN
+		resolver.MustRegister(
+			func(toDecorate *TestService) (*TestService, error) {
+				return &TestService{
+					Name:   toDecorate.Name + " (decorated)",
+					closed: toDecorate.closed,
+				}, nil
+			},
+			Decorate("myService"),
+		)
+		service := MustResolve[*TestService](resolver)
+
+		// THEN
+		assert.NotNil(t, service)
+		assert.Equal(t, "test-service (decorated)", service.Name)
+	})
+
+	t.Run("it should fail to resolve if decorator is failing", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(NewTestService, Named("myService"))
+
+		// WHEN
+		resolver.MustRegister(
+			func(toDecorate *TestService) (*TestService, error) {
+				return nil, fmt.Errorf("failed to resolve decorator")
+			},
+			Decorate("myService"),
+		)
+		_, err := Resolve[*TestService](resolver)
+
+		// THEN
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to resolve decorator")
+	})
+
+	t.Run("it should not decorate already resolved components", func(t *testing.T) {
+		// GIVEN
+		resolver := New()
+		resolver.MustRegister(NewTestService, Named("myService"))
+		MustResolve[*TestService](resolver) // resolve before decorator is registered, component is now cached
+
+		// WHEN
+		resolver.MustRegister(
+			func(toDecorate *TestService) *TestService {
+				return &TestService{
+					Name:   toDecorate.Name + " (decorated)",
+					closed: toDecorate.closed,
+				}
+			},
+			Decorate("myService"),
+		)
+		service := MustResolve[*TestService](resolver)
+
+		// THEN
+		assert.NotNil(t, service)
+		assert.Equal(t, "test-service", service.Name)
 	})
 }

@@ -1,13 +1,13 @@
 package godi
 
 import (
-	"errors"
 	"fmt"
 	"github.com/a-peyrard/godi/fn"
 	"github.com/a-peyrard/godi/option"
 	"log"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,8 +31,9 @@ type (
 	}
 
 	Resolver struct {
-		providers *SortedCOWSlice[Provider]
-		store     *Store
+		providers  *SortedCOWSlice[Provider]
+		decorators sync.Map // type of keys is Name, type of values is *SortedCOWSlice[Decorator]
+		store      *Store
 
 		lock *LockManager
 	}
@@ -49,6 +50,8 @@ type (
 		priority     int
 		dependencies []dependency
 		conditions   []condition
+
+		decorate *string
 
 		description string
 	}
@@ -81,6 +84,12 @@ func Description(description string) option.Option[RegistrableOptions] {
 	}
 }
 
+func Decorate(named string) option.Option[RegistrableOptions] {
+	return func(opts *RegistrableOptions) {
+		opts.decorate = &named
+	}
+}
+
 func (n Name) String() string {
 	return fmt.Sprintf("(%s, %s)", n.name, n.typ.String())
 }
@@ -92,7 +101,7 @@ func (r Request) String() string {
 func New() *Resolver {
 
 	r := &Resolver{
-		providers: NewSortedCOWSlice[Provider](fn.ReverseComparator(compareByPriority)),
+		providers: NewSortedCOWSlice[Provider](fn.ReverseComparator(compareByPriority[Provider])),
 		store:     NewStore(),
 
 		lock: NewLockManager(),
@@ -108,25 +117,34 @@ func New() *Resolver {
 
 func (r *Resolver) Register(reg Registrable, opts ...option.Option[RegistrableOptions]) error {
 	var (
-		t        = reflect.TypeOf(reg)
-		provider Provider
-		err      error
+		t         = reflect.TypeOf(reg)
+		provider  Provider
+		decorator Decorator
+		err       error
+		options   = option.Build(
+			&RegistrableOptions{},
+			opts...,
+		)
 	)
 	if t.Kind() == reflect.Func {
-		provider, err = NewFactoryMethodProvider(reg, opts...)
-		if err != nil {
-			return fmt.Errorf("failed to create factory method provider for %T:\n\t%w", reg, err)
+		if options.decorate == nil {
+			provider, err = NewFactoryMethodProvider(reg, opts...)
+			if err != nil {
+				return fmt.Errorf("failed to create factory method provider for %T:\n\t%w", reg, err)
+			}
+		} else {
+			decorator, err = NewFactoryMethodDecorator(reg, opts...)
+			if err != nil {
+				return fmt.Errorf("failed to create factory method decorator for %T:\n\t%w", reg, err)
+			}
 		}
 	} else if t.Implements(ProviderType) {
 		provider = reg.(Provider)
+	} else if t.Implements(DecoratorType) {
+		decorator = reg.(Decorator)
 	} else {
-		return errors.New("provider must be either a function or a Provider implementation")
+		return fmt.Errorf("we can register provider as function or as Provider implementation, or decorators as Decorator implementation or function, unsupported type %T", reg)
 	}
-
-	options := option.Build(
-		&RegistrableOptions{},
-		opts...,
-	)
 
 	// validate the conditions if any, they might prevent the registration
 	for _, cond := range options.conditions {
@@ -135,7 +153,19 @@ func (r *Resolver) Register(reg Registrable, opts ...option.Option[RegistrableOp
 		}
 	}
 
-	r.providers.Add(provider)
+	if provider != nil {
+		r.providers.Add(provider)
+	}
+	if decorator != nil {
+		decoratedName := decorator.ForName()
+
+		lockForName := r.lock.GetLockFor(decoratedName)
+		lockForName.Lock()
+		defer lockForName.Unlock()
+
+		val, _ := r.decorators.LoadOrStore(decoratedName, NewSortedCOWSlice[Decorator](compareByPriority)) // unlike providers, decorators are not reversed, the lowest priority is executed first
+		val.(*SortedCOWSlice[Decorator]).Add(decorator)
+	}
 
 	return nil
 }
@@ -349,7 +379,11 @@ func (r *Resolver) resolve(req Request) (val reflect.Value, found bool, err erro
 	return req.collector.collect(req.unitaryTyp, r, results, req.tracker)
 }
 
-func compareByPriority(p1, p2 Provider) fn.ComparisonResult {
+type WithPriority interface {
+	Priority() int
+}
+
+func compareByPriority[T WithPriority](p1, p2 T) fn.ComparisonResult {
 	if p1.Priority() < p2.Priority() {
 		return fn.Less
 	}

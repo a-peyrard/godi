@@ -32,19 +32,29 @@ func (r *Resolver) provideUsing(p Provider, name Name, tracker *Tracker) (reflec
 		return storedComp, nil
 	}
 
-	dependencies := make([]reflect.Value, len(p.Dependencies()))
-	for idx, depReq := range p.Dependencies() {
-		depReq.tracker = NewTrackerFrom(tracker)
-		val, _, err := r.resolve(depReq)
-		if err != nil {
-			return reflect.Value{}, fmt.Errorf("failed to resolve dependency %v to provide component %s:\n\t%w", depReq, name, err)
-		}
-		dependencies[idx] = val
+	dependencies, err := r.resolveDependencies(p.Dependencies(), tracker)
+	if err != nil {
+		return reflect.Value{}, fmt.Errorf("failed to resolve dependencies for provider %s to provide component %s:\n\t%w", p, name, err)
 	}
 
 	comp, err := p.Provide(name, dependencies)
 	if err != nil {
 		return reflect.Value{}, fmt.Errorf("failed to provide component %s using provider %s:\n\t%w", name, p, err)
+	}
+
+	// check if we have decorators to apply
+	decoratorsForName, found := r.decorators.Load(name)
+	if found {
+		for _, decorator := range decoratorsForName.(*SortedCOWSlice[Decorator]).All() {
+			dependencies, err := r.resolveDependencies(decorator.Dependencies(), tracker)
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("failed to resolve dependencies for decorator %s:\n\t%w", decorator, err)
+			}
+			comp, err = decorator.Decorate(comp, dependencies)
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("failed to apply decorator %s to component %s:\n\t%w", decorator, name, err)
+			}
+		}
 	}
 
 	// unstack the current component from the tracker
@@ -54,4 +64,18 @@ func (r *Resolver) provideUsing(p Provider, name Name, tracker *Tracker) (reflec
 	r.store.Put(name, comp)
 
 	return comp, nil
+}
+
+func (r *Resolver) resolveDependencies(requests []Request, tracker *Tracker) ([]reflect.Value, error) {
+	dependencies := make([]reflect.Value, len(requests))
+	for idx, req := range requests {
+		req.tracker = NewTrackerFrom(tracker)
+		val, _, err := r.resolve(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve dependency %v:\n\t%w", req, err)
+		}
+		dependencies[idx] = val
+	}
+
+	return dependencies, nil
 }

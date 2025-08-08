@@ -10,7 +10,7 @@ import (
 )
 
 type (
-	ProviderAnnotation struct {
+	ProviderDecoratorAnnotation struct {
 		logger      *zerolog.Logger
 		description string
 		properties  map[string]string
@@ -26,7 +26,7 @@ type (
 	}
 )
 
-func (p ProviderAnnotation) Priority() (priority int, found bool) {
+func (p ProviderDecoratorAnnotation) Priority() (priority int, found bool) {
 	if priorityStr, exists := p.properties["priority"]; exists {
 		if priority, err := strconv.Atoi(priorityStr); err == nil {
 			return priority, true
@@ -37,14 +37,14 @@ func (p ProviderAnnotation) Priority() (priority int, found bool) {
 	return 0, false
 }
 
-func (p ProviderAnnotation) Named() (named string, found bool) {
+func (p ProviderDecoratorAnnotation) Named() (named string, found bool) {
 	named, found = p.properties["named"]
 	return named, found
 }
 
 var knownProperties = set.NewWithValues("priority", "named")
 
-func (p ProviderAnnotation) UnknownProperties() []string {
+func (p ProviderDecoratorAnnotation) UnknownProperties() []string {
 	var unknown []string
 	for key := range p.properties {
 		if knownProperties.DoesNotContain(key) {
@@ -54,7 +54,7 @@ func (p ProviderAnnotation) UnknownProperties() []string {
 	return unknown
 }
 
-func parseProviderAnnotation(logger *zerolog.Logger, fnName string, docText string) ProviderAnnotation {
+func parseProviderDecoratorAnnotation(logger *zerolog.Logger, fnName string, docText string, providerOrDecoratorTag string) ProviderDecoratorAnnotation {
 	lines := strings.Split(docText, "\n")
 
 	var (
@@ -66,7 +66,7 @@ func parseProviderAnnotation(logger *zerolog.Logger, fnName string, docText stri
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
-		if strings.HasPrefix(line, providerAnnotationTag) {
+		if strings.HasPrefix(line, providerOrDecoratorTag) {
 			providerLine = line
 		} else if strings.HasPrefix(line, whenAnnotationTag) {
 			conditionLines = append(conditionLines, line)
@@ -75,10 +75,10 @@ func parseProviderAnnotation(logger *zerolog.Logger, fnName string, docText stri
 		}
 	}
 
-	return ProviderAnnotation{
+	return ProviderDecoratorAnnotation{
 		logger:      logger,
 		description: formatDescription(fnName, descriptionLines),
-		properties:  parseProperties(providerLine, providerAnnotationTag),
+		properties:  parseProperties(providerLine, providerOrDecoratorTag),
 		conditions:  parseWhenAnnotations(logger, conditionLines),
 	}
 }

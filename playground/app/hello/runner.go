@@ -15,10 +15,37 @@ const sleepDuration = 2 * time.Second
 // @provider named="hello.runner"
 func NewHelloRunner(
 	foo string, // @inject named="hello.foo" optional=true
+	bar string, // @inject named="hello.bar" optional=true
 ) runner.Runnable {
 	return runner.RunnableFunc(func(ctx context.Context) error {
-		return HelloRunner(ctx, foo)
+		return HelloRunner(ctx, foo + bar)
 	})
+}
+
+// NewHelloRunnerDecorator Decorates the hello runner.
+//
+// @decorator named="hello.runner"
+func NewHelloRunnerDecorator(
+	runnable runner.Runnable,
+	foo string, // @inject named="hello.foo" optional=true
+) runner.Runnable {
+	return runner.RunnableFunc(func(ctx context.Context) error {
+		log.Println("Decorating HelloRunner with dependency:", foo)
+		err := runnable.Run(ctx)
+		if err != nil {
+			log.Printf("HelloRunner failed: %v", err)
+			return err
+		}
+		log.Println("HelloRunner completed successfully")
+		return nil
+	})
+}
+
+// NewHelloFooString provides a simple string "hello".
+//
+// @provider named="hello.foo"
+func NewHelloFooString() string {
+	return "helloFoo"
 }
 
 // just to demonstrate cycle detection
@@ -31,7 +58,7 @@ func NewHelloRunner(
 //
 //// @provider named="hello.bar"
 //func BarString(
-//	di.Runnable, // @inject named="hello.runner"
+//	runner.Runnable, // @inject named="hello.runner"
 //) string {
 //	return "cycle??"
 //}

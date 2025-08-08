@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,6 +17,10 @@ type TestDatabase struct {
 
 type TestLogger struct {
 	Level string
+}
+
+func (t *TestLogger) Log(message string) {
+	fmt.Println(t.Level, message)
 }
 
 type JustAnotherTestService struct {

@@ -34,12 +34,12 @@ func ({{.StructName}}) Register(resolver *godi.Resolver) {
 {{end}}{{end}}}
 `
 
-type ProviderForTemplate struct {
+type RegistrationTemplate struct {
 	FnName  string
 	Options []string
 }
 
-func toProviderForTemplate(p ProviderDefinition, importWithAlias map[string]string) ProviderForTemplate {
+func providerToRegistrationTemplate(p ProviderDefinition, importWithAlias map[string]string) RegistrationTemplate {
 	var options []string
 	if p.Named != "" {
 		options = append(options, fmt.Sprintf("godi.Named(\"%s\")", p.Named))
@@ -79,8 +79,56 @@ func toProviderForTemplate(p ProviderDefinition, importWithAlias map[string]stri
 	}
 	options = appendDependenciesToOptions(options, dependencies)
 
-	return ProviderForTemplate{
+	return RegistrationTemplate{
 		FnName:  generateFQN(p.ImportPath, p.FnName, importWithAlias),
+		Options: options,
+	}
+}
+
+func decoratorToRegistrationTemplate(d DecoratorDefinition, importWithAlias map[string]string) RegistrationTemplate {
+	var options []string
+	if d.Decorate != "" {
+		options = append(options, fmt.Sprintf("godi.Decorate(\"%s\")", d.Decorate))
+	} else {
+		panic("decorator must have a decorate target")
+	}
+	if d.Priority != 0 {
+		options = append(options, fmt.Sprintf("godi.Priority(%d)", d.Priority))
+	}
+	if d.Conditions != nil && len(d.Conditions) > 0 {
+		for _, condition := range d.Conditions {
+			options = append(options, whenAnnotationToOption(condition))
+		}
+	}
+	if d.Description != "" {
+		options = append(options, fmt.Sprintf("godi.Description(\"%s\")", d.Description))
+	}
+
+	var dependencies []string
+	for _, dep := range d.Dependencies {
+		multiple, found := dep.Multiple()
+		if found && multiple {
+			dependencies = append(dependencies, "godi.Inject.Multiple()")
+			continue
+		}
+
+		var dependencyToAdd string
+		named, found := dep.Named()
+		if found {
+			dependencyToAdd = fmt.Sprintf("godi.Inject.Named(\"%s\")", named)
+		} else {
+			dependencyToAdd = "godi.Inject.Auto()"
+		}
+		optional, found := dep.Optional()
+		if found && optional {
+			dependencyToAdd += ".Optional()"
+		}
+		dependencies = append(dependencies, dependencyToAdd)
+	}
+	options = appendDependenciesToOptions(options, dependencies)
+
+	return RegistrationTemplate{
+		FnName:  generateFQN(d.ImportPath, d.FnName, importWithAlias),
 		Options: options,
 	}
 }
@@ -107,9 +155,9 @@ func appendDependenciesToOptions(options []string, dependencies []string) []stri
 	return options
 }
 
-func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[string]string) []ProviderForTemplate {
+func configToRegistrationTemplate(config ConfigDefinition, importWithAlias map[string]string) []RegistrationTemplate {
 	var (
-		providers               []ProviderForTemplate
+		providers               []RegistrationTemplate
 		configLoaderImportAlias = importWithAlias[configLoaderImportPath]
 	)
 
@@ -117,7 +165,7 @@ func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[s
 	prefixName := "EnvPrefix4" + config.TypeName
 	configStructFQN := generateFQN(config.ImportPath, config.TypeName, importWithAlias)
 
-	providers = append(providers, ProviderForTemplate{
+	providers = append(providers, RegistrationTemplate{
 		FnName: fmt.Sprintf("godi.ToStaticProvider(\"%s\")", config.Annotation.Prefix()),
 		Options: []string{
 			fmt.Sprintf("godi.Named(\"%s\")", prefixName),
@@ -136,7 +184,7 @@ func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[s
 		fmt.Sprintf("godi.Inject.Named(\"%s\")", prefixName),
 	})
 
-	providers = append(providers, ProviderForTemplate{
+	providers = append(providers, RegistrationTemplate{
 		FnName:  fmt.Sprintf("func(envPrefix string) (*%s, error) {\n\t\t\treturn %s.Load[%s](%s.WithEnvPrefix(envPrefix))\n\t\t}", configStructFQN, configLoaderImportAlias, configStructFQN, configLoaderImportAlias),
 		Options: options,
 	})
@@ -144,7 +192,7 @@ func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[s
 	// finally, we will add a dynamic provider which will allow to resolve the config fields
 	providers = append(
 		providers,
-		ProviderForTemplate{
+		RegistrationTemplate{
 			FnName: fmt.Sprintf("&godi.ConfigFieldProvider[%s]{}", configStructFQN),
 		},
 	)
@@ -152,12 +200,21 @@ func configToProvidersForTemplate(config ConfigDefinition, importWithAlias map[s
 	return providers
 }
 
-func generateCode(outputPath string, registryDef *RegistryDefinition, providers []ProviderDefinition, configs []ConfigDefinition) error {
+func generateCode(
+	outputPath string,
+	registryDef *RegistryDefinition,
+	providers []ProviderDefinition,
+	decorators []DecoratorDefinition,
+	configs []ConfigDefinition,
+) error {
 	tmpl := template.Must(template.New("registry").Parse(registryTemplate))
 
 	imports := []string{diImportPath}
 	for _, p := range providers {
 		imports = append(imports, p.ImportPath)
+	}
+	for _, d := range decorators {
+		imports = append(imports, d.ImportPath)
 	}
 	if len(configs) > 0 {
 		imports = append(imports, configLoaderImportPath)
@@ -191,20 +248,17 @@ func generateCode(outputPath string, registryDef *RegistryDefinition, providers 
 	stdslices.Sort(importsForTemplate)
 
 	// gather the data for the template
-	var providerTemplates []ProviderForTemplate
-	providerTemplates = append(providerTemplates, slices.Map(providers, func(p ProviderDefinition) ProviderForTemplate {
-		return toProviderForTemplate(p, importWithAlias)
-	})...)
-	providerTemplates = append(providerTemplates, slices.FlatMap(configs, func(config ConfigDefinition) []ProviderForTemplate {
-		return configToProvidersForTemplate(config, importWithAlias)
-	})...)
+	var registrationTemplates []RegistrationTemplate
+	registrationTemplates = append(registrationTemplates, slices.Map(providers, curryLastArg(providerToRegistrationTemplate, importWithAlias))...)
+	registrationTemplates = append(registrationTemplates, slices.FlatMap(configs, curryLastArg(configToRegistrationTemplate, importWithAlias))...)
+	registrationTemplates = append(registrationTemplates, slices.Map(decorators, curryLastArg(decoratorToRegistrationTemplate, importWithAlias))...)
 
 	data := map[string]interface{}{
 		"PackageName":  registryDef.PackageName,
 		"StructName":   registryDef.StructName,
 		"DIImportPath": "github.com/a-peyrard/godi",
 		"Imports":      importsForTemplate,
-		"Providers":    providerTemplates,
+		"Providers":    registrationTemplates,
 	}
 
 	file, err := os.Create(outputPath)
@@ -252,4 +306,13 @@ func generateFQN(importPath string, typeName string, importWithAlias map[string]
 		return fmt.Sprintf("*%s.%s", importWithAlias[importPath], typeName[1:])
 	}
 	return fmt.Sprintf("%s.%s", importWithAlias[importPath], typeName)
+}
+
+func curryLastArg[A, B, C any](
+	fn func(a A, b B) C,
+	b B,
+) func(a A) C {
+	return func(a A) C {
+		return fn(a, b)
+	}
 }
