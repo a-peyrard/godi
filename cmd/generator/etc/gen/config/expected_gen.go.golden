@@ -12,14 +12,14 @@ func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		godi.ToStaticProvider("APP"),
 		godi.Named("EnvPrefix4AppConfig"),
-		godi.Description("Provides configuration prefix, i.e. the env vars prefix"),
+		godi.Description(`Provides configuration prefix, i.e. the env vars prefix`),
 	)
 	resolver.MustRegister(
 		func(envPrefix string) (*tconfig.AppConfig, error) {
 			return config.Load[tconfig.AppConfig](config.WithEnvPrefix(envPrefix))
 		},
 		godi.Named("AppConfig"),
-		godi.Description("contains application configuration"),
+		godi.Description(`contains application configuration`),
 		godi.Dependencies(
 			godi.Inject.Named("EnvPrefix4AppConfig"),
 		),

@@ -13,11 +13,11 @@ func (Registry) Register(resolver *godi.Resolver) {
 		godi.Named("cache"),
 		godi.When("ENABLE_CACHE").Equals("true"),
 		godi.When("ENV").NotEquals("test"),
-		godi.Description("RedisCache provides Redis-based caching"),
+		godi.Description(`RedisCache provides Redis-based caching`),
 	)
 	resolver.MustRegister(
 		conditional.NewMemoryCache,
 		godi.Named("cache"),
-		godi.Description("MemoryCache provides in-memory caching"),
+		godi.Description(`MemoryCache provides in-memory caching`),
 	)
 }

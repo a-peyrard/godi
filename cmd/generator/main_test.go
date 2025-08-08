@@ -34,6 +34,10 @@ func TestCodeGeneration(t *testing.T) {
 			fixture: "simple_provider",
 		},
 		{
+			name:    "it should allow multi-lines description in providers",
+			fixture: "multi_lines_description",
+		},
+		{
 			name:    "provider with dependencies",
 			fixture: "provider_with_deps",
 		},

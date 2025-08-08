@@ -11,7 +11,7 @@ func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		decorator.DecorateWithLogging,
 		godi.Decorate("hello.service"),
-		godi.Description("Adds logging to the hello service"),
+		godi.Description(`Adds logging to the hello service`),
 		godi.Dependencies(
 			godi.Inject.Named("logger"),
 		),

@@ -53,7 +53,7 @@ func providerToRegistrationTemplate(p ProviderDefinition, importWithAlias map[st
 		}
 	}
 	if p.Description != "" {
-		options = append(options, fmt.Sprintf("godi.Description(\"%s\")", p.Description))
+		options = append(options, fmt.Sprintf("godi.Description(`%s`)", p.Description))
 	}
 
 	var dependencies []string
@@ -101,7 +101,7 @@ func decoratorToRegistrationTemplate(d DecoratorDefinition, importWithAlias map[
 		}
 	}
 	if d.Description != "" {
-		options = append(options, fmt.Sprintf("godi.Description(\"%s\")", d.Description))
+		options = append(options, fmt.Sprintf("godi.Description(`%s`)", d.Description))
 	}
 
 	var dependencies []string
@@ -169,7 +169,7 @@ func configToRegistrationTemplate(config ConfigDefinition, importWithAlias map[s
 		FnName: fmt.Sprintf("godi.ToStaticProvider(\"%s\")", config.Annotation.Prefix()),
 		Options: []string{
 			fmt.Sprintf("godi.Named(\"%s\")", prefixName),
-			"godi.Description(\"Provides configuration prefix, i.e. the env vars prefix\")",
+			"godi.Description(`Provides configuration prefix, i.e. the env vars prefix`)",
 		},
 	})
 
@@ -178,7 +178,7 @@ func configToRegistrationTemplate(config ConfigDefinition, importWithAlias map[s
 		fmt.Sprintf("godi.Named(\"%s\")", config.TypeName),
 	}
 	if config.Annotation.description != "" {
-		options = append(options, fmt.Sprintf("godi.Description(\"%s\")", config.Annotation.description))
+		options = append(options, fmt.Sprintf("godi.Description(`%s`)", config.Annotation.description))
 	}
 	options = appendDependenciesToOptions(options, []string{
 		fmt.Sprintf("godi.Inject.Named(\"%s\")", prefixName),

@@ -12,7 +12,7 @@ func (Registry) Register(resolver *godi.Resolver) {
 		withdeps.NewDatabaseConnection,
 		godi.Named("database.connection"),
 		godi.Priority(10),
-		godi.Description("DatabaseConnection provides database connectivity"),
+		godi.Description(`DatabaseConnection provides database connectivity`),
 		godi.Dependencies(
 			godi.Inject.Auto(),
 			godi.Inject.Named("app.config"),

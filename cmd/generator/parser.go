@@ -276,7 +276,6 @@ func formatDescription(typeStr string, descriptionLines []string) string {
 	normalized := strings.TrimSpace(strings.Join(descriptionLines, "\n"))
 	normalized = strings.TrimPrefix(normalized, typeStr)
 	normalized = strings.TrimSpace(normalized)
-	normalized = strings.Replace(normalized, "\"", "\\\"", -1)
 
 	return normalized
 }

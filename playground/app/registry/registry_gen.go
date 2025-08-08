@@ -13,7 +13,7 @@ func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		hello.NewHelloRunner,
 		godi.Named("hello.runner"),
-		godi.Description("Creates a new Runnable that prints \"Hello world\" and sleeps for a specified duration."),
+		godi.Description(`Creates a new Runnable that prints "Hello world" and sleeps for a specified duration.`),
 		godi.Dependencies(
 			godi.Inject.Named("hello.foo").Optional(),
 			godi.Inject.Named("hello.bar").Optional(),
@@ -22,26 +22,26 @@ func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		hello.NewHelloFooString,
 		godi.Named("hello.foo"),
-		godi.Description("provides a simple string \"hello\"."),
+		godi.Description(`provides a simple string "hello".`),
 	)
 	resolver.MustRegister(
 		hello.OnlyDevRunner,
 		godi.Named("hello.runner"),
 		godi.Priority(100),
 		godi.When("APP_ENV").Equals("dev"),
-		godi.Description("Creates a new Runnable that prints \"Hello world\"."),
+		godi.Description(`Creates a new Runnable that prints "Hello world".`),
 	)
 	resolver.MustRegister(
 		godi.ToStaticProvider("PG"),
 		godi.Named("EnvPrefix4Config"),
-		godi.Description("Provides configuration prefix, i.e. the env vars prefix"),
+		godi.Description(`Provides configuration prefix, i.e. the env vars prefix`),
 	)
 	resolver.MustRegister(
 		func(envPrefix string) (*aconfig.Config, error) {
 			return config.Load[aconfig.Config](config.WithEnvPrefix(envPrefix))
 		},
 		godi.Named("Config"),
-		godi.Description("contains the playground configuration."),
+		godi.Description(`contains the playground configuration.`),
 		godi.Dependencies(
 			godi.Inject.Named("EnvPrefix4Config"),
 		),
@@ -50,7 +50,7 @@ func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		hello.NewHelloRunnerDecorator,
 		godi.Decorate("hello.runner"),
-		godi.Description("Decorates the hello runner."),
+		godi.Description(`Decorates the hello runner.`),
 		godi.Dependencies(
 			godi.Inject.Named("hello.foo").Optional(),
 		),

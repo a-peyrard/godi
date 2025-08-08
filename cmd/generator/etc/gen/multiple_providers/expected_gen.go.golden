@@ -12,20 +12,20 @@ func (Registry) Register(resolver *godi.Resolver) {
 		multiple.NewDefaultRunner,
 		godi.Named("runner"),
 		godi.Priority(1),
-		godi.Description("DefaultRunner is the default runner implementation"),
+		godi.Description(`DefaultRunner is the default runner implementation`),
 	)
 	resolver.MustRegister(
 		multiple.NewDevRunner,
 		godi.Named("runner"),
 		godi.Priority(100),
 		godi.When("ENV").Equals("dev"),
-		godi.Description("DevRunner is used in development"),
+		godi.Description(`DevRunner is used in development`),
 	)
 	resolver.MustRegister(
 		multiple.NewStagingRunner,
 		godi.Named("runner"),
 		godi.Priority(50),
 		godi.When("ENV").Equals("staging"),
-		godi.Description("StagingRunner is used in staging"),
+		godi.Description(`StagingRunner is used in staging`),
 	)
 }

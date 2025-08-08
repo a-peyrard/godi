@@ -15,7 +15,7 @@ func (Registry) Register(resolver *godi.Resolver) {
 		providers.NewAppService,
 		godi.Named("app.service"),
 		godi.Priority(10),
-		godi.Description("AppService is the main application service"),
+		godi.Description(`AppService is the main application service`),
 		godi.Dependencies(
 			godi.Inject.Named("AppConfig"),
 			godi.Inject.Named("cache"),
@@ -26,7 +26,7 @@ func (Registry) Register(resolver *godi.Resolver) {
 		providers.NewRedisCache,
 		godi.Named("cache"),
 		godi.When("REDIS_ENABLED").Equals("true"),
-		godi.Description("RedisCache for production"),
+		godi.Description(`RedisCache for production`),
 		godi.Dependencies(
 			godi.Inject.Named("AppConfig"),
 		),
@@ -34,30 +34,30 @@ func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		providers.NewMemCache,
 		godi.Named("cache"),
-		godi.Description("MemCache for development"),
+		godi.Description(`MemCache for development`),
 	)
 	resolver.MustRegister(
 		providers.NewFirstRunner,
 		godi.Named("runner"),
-		godi.Description("FirstRunner implementation"),
+		godi.Description(`FirstRunner implementation`),
 	)
 	resolver.MustRegister(
 		providers.NewSecondRunner,
 		godi.Named("runner"),
 		godi.Priority(10),
-		godi.Description("SecondRunner implementation"),
+		godi.Description(`SecondRunner implementation`),
 	)
 	resolver.MustRegister(
 		godi.ToStaticProvider("APP"),
 		godi.Named("EnvPrefix4AppConfig"),
-		godi.Description("Provides configuration prefix, i.e. the env vars prefix"),
+		godi.Description(`Provides configuration prefix, i.e. the env vars prefix`),
 	)
 	resolver.MustRegister(
 		func(envPrefix string) (*cconfig.AppConfig, error) {
 			return config.Load[cconfig.AppConfig](config.WithEnvPrefix(envPrefix))
 		},
 		godi.Named("AppConfig"),
-		godi.Description("contains all application settings"),
+		godi.Description(`contains all application settings`),
 		godi.Dependencies(
 			godi.Inject.Named("EnvPrefix4AppConfig"),
 		),
@@ -67,7 +67,7 @@ func (Registry) Register(resolver *godi.Resolver) {
 		decorators.AddMetrics,
 		godi.Decorate("app.service"),
 		godi.Priority(100),
-		godi.Description("MetricsDecorator adds metrics to the app service"),
+		godi.Description(`MetricsDecorator adds metrics to the app service`),
 		godi.Dependencies(
 			godi.Inject.Named("metrics").Optional(),
 		),

@@ -11,6 +11,9 @@ func (Registry) Register(resolver *godi.Resolver) {
 	resolver.MustRegister(
 		simple.NewHelloService,
 		godi.Named("hello.service"),
-		godi.Description(`HelloService provides a greeting service`),
+		godi.Description(`provides a greeting service
+Is a service providing hello functionality.
+This service can be used to greet users.
+This is "really" a 'complex' service with multiple lines of description.`),
 	)
 }
