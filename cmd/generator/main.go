@@ -161,7 +161,7 @@ func main() {
 	// we are looking for multiple things:
 	// - functions annotated with @provider
 	// - functions annotated with @decorator
-	// - a struct that embeds godi.EmptyRegistry
+	// - a struct that embeds gogodi.EmptyRegistry
 	// - struct with @config annotation
 	var providerDefinitions []ProviderDefinition
 	var decoratorDefinitions []DecoratorDefinition
@@ -189,7 +189,7 @@ func main() {
 
 			// only look for Registry struct in the file triggering the generation
 			if filePath == targetFilePath {
-				// Look for struct embedding godi.EmptyRegistry
+				// Look for struct embedding gogodi.EmptyRegistry
 				ast.Inspect(file, func(n ast.Node) bool {
 					if genDecl, ok := n.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {
 						for _, spec := range genDecl.Specs {
@@ -342,7 +342,7 @@ func main() {
 	stopScan := time.Now()
 
 	if registryDefinition == nil {
-		logger.Error().Msgf("No Registry struct found in the target package: %s, make sure you have a struct like this:\ntype Registry {\n    godi.EmptyRegistry\n}", targetPackage)
+		logger.Error().Msgf("No Registry struct found in the target package: %s, make sure you have a struct like this:\ntype Registry {\n    gogodi.EmptyRegistry\n}", targetPackage)
 		os.Exit(1)
 	}
 

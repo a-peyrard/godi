@@ -67,3 +67,48 @@ func Test_findSuitableAlias(t *testing.T) {
 		assert.Equal(t, "gagfn2", alias)
 	})
 }
+
+func Test_generateFQN(t *testing.T) {
+	t.Run("it should return type name when import path is empty", func(t *testing.T) {
+		// GIVEN
+		importPath := ""
+		typeName := "MyType"
+		importWithAlias := map[string]string{}
+
+		// WHEN
+		result := generateFQN(importPath, typeName, importWithAlias)
+
+		// THEN
+		assert.Equal(t, "MyType", result)
+	})
+
+	t.Run("it should prepend alias for regular type", func(t *testing.T) {
+		// GIVEN
+		importPath := "github.com/example/pkg"
+		typeName := "MyType"
+		importWithAlias := map[string]string{
+			"github.com/example/pkg": "pkg",
+		}
+
+		// WHEN
+		result := generateFQN(importPath, typeName, importWithAlias)
+
+		// THEN
+		assert.Equal(t, "pkg.MyType", result)
+	})
+
+	t.Run("it should handle pointer types correctly", func(t *testing.T) {
+		// GIVEN
+		importPath := "github.com/example/pkg"
+		typeName := "*MyType"
+		importWithAlias := map[string]string{
+			"github.com/example/pkg": "pkg",
+		}
+
+		// WHEN
+		result := generateFQN(importPath, typeName, importWithAlias)
+
+		// THEN
+		assert.Equal(t, "*pkg.MyType", result)
+	})
+}
