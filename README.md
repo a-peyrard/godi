@@ -1,5 +1,9 @@
 # goDI
 
+[![CI](https://github.com/a-peyrard/godi/workflows/CI/badge.svg)](https://github.com/a-peyrard/godi/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/a-peyrard/godi)](https://goreportcard.com/report/github.com/a-peyrard/godi)
+[![codecov](https://codecov.io/gh/a-peyrard/godi/branch/main/graph/badge.svg)](https://codecov.io/gh/a-peyrard/godi)
+
 A lightweight, annotation-based dependency injection framework for Go that provides compile-time code generation and runtime efficiency.
 
 ## Table of Contents
