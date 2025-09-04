@@ -5,8 +5,8 @@ package registry
 import (
 	"github.com/a-peyrard/godi"
 	"github.com/a-peyrard/godi/config"
-	"github.com/a-peyrard/godi/playground/app/hello"
 	aconfig "github.com/a-peyrard/godi/playground/app/config"
+	"github.com/a-peyrard/godi/playground/app/hello"
 )
 
 func (Registry) Register(resolver *godi.Resolver) {
