@@ -18,7 +18,7 @@ func NewHelloRunner(
 	bar string, // @inject named="hello.bar" optional=true
 ) runner.Runnable {
 	return runner.RunnableFunc(func(ctx context.Context) error {
-		return HelloRunner(ctx, foo + bar)
+		return HelloRunner(ctx, foo+bar)
 	})
 }
 

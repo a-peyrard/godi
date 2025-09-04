@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/a-peyrard/godi/set"
 	"github.com/a-peyrard/godi/slices"
+	"go/format"
 	"os"
 	"path/filepath"
 	stdslices "slices"
@@ -261,6 +263,20 @@ func generateCode(
 		"Providers":    registrationTemplates,
 	}
 
+	// Generate code to a buffer first
+	var buf bytes.Buffer
+	err := tmpl.Execute(&buf, data)
+	if err != nil {
+		return err
+	}
+
+	// Format the generated code
+	formattedCode, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated code: %w", err)
+	}
+
+	// Write the formatted code to file
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return err
@@ -268,7 +284,8 @@ func generateCode(
 	//goland:noinspection GoUnhandledErrorResult
 	defer file.Close()
 
-	return tmpl.Execute(file, data)
+	_, err = file.Write(formattedCode)
+	return err
 }
 
 func findSuitableAlias(importPath string, aliases set.Set[string]) string {
